@@ -491,12 +491,12 @@ def vae_builder(vae_type = vae_type_flag, x_dim = x_dim, h_dim1 = h_dim1, h_dim2
     return vae, z_dim
 
 ########Actually build it
-vae, z_dim = vae_builder()
+#vae, z_dim = vae_builder()
 
 #######what optimier to use:
 # learning rate = 0.0001
 #optimizer = torch.optim.SGD(vae.parameters(), lr=0.0001, momentum = 0.9)
-optimizer = optim.Adam(vae.parameters(), lr=0.0001)
+#optimizer = optim.Adam(vae.parameters(), lr=0.0001)
 #device = torch.device('cuda:3')
 
 
@@ -676,8 +676,9 @@ def place_crop(crop_data,loc): # retina placement on GPU for training
     return out_retina
 
 
-def train(epoch, train_loader_noSkip, emnist_skip, fmnist_skip, test_loader, sample_loader, return_loss = False, seen_labels = {}, blocks_dataset = None):
+def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels = {}, blocks_dataset = None):
     vae.train()
+    train_loader_noSkip, emnist_skip, fmnist_skip, test_loader, sample_loader = dataloaders[0], dataloaders[1], dataloaders[2], dataloaders[3], dataloaders[4]
     train_loss = 0
     dataiter_noSkip = iter(train_loader_noSkip) # the latent space is trained on EMNIST, MNIST, and f-MNIST
     m = 5 # number of seperate training decoders used
@@ -701,8 +702,8 @@ def train(epoch, train_loader_noSkip, emnist_skip, fmnist_skip, test_loader, sam
         data_noSkip, batch_labels = next(dataiter_noSkip)
     
         data = data_noSkip
-        z = random.randint(0,len(blocks_dataset)-201)
-        blocks = blocks_dataset[z:z+200]
+        #z = random.randint(0,len(blocks_dataset)-201)
+        #blocks = blocks_dataset[z:z+200]
         #print(blocks.size())
         #data = blocks
         
@@ -755,15 +756,15 @@ def train(epoch, train_loader_noSkip, emnist_skip, fmnist_skip, test_loader, sam
                 if r == 1:
                     whichdecode_use = 'shape'
                     keepgrad = ['shape']
-                    data = blocks #TEMP
+                    #data = blocks #TEMP
                 elif r == 2:
                     whichdecode_use = 'color'
                     keepgrad = ['color']
-                    data = blocks #TEMP
+                    #data = blocks #TEMP
                 else:
                     whichdecode_use = 'cropped'
                     keepgrad = ['shape', 'color']
-                    data = blocks #TEMP
+                    #data = blocks #TEMP
                 
                 '''else:
                     data_skip = next(dataiter_fmnist_skip)
