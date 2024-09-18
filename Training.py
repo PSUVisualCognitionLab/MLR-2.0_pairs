@@ -14,6 +14,8 @@ from MLR_src.mVAE import load_checkpoint, vae_builder
 from torch.utils.data import DataLoader, ConcatDataset
 from MLR_src.dataset_builder import Dataset
 from MLR_src.train_mVAE import train_mVAE
+from MLR_src.train_labels import train_labelnet
+from MLR_src.train_classifiers import train_classifiers
 
 folder_name = 'test'
 #torch.set_default_dtype(torch.float64)
@@ -44,7 +46,7 @@ if load is True:
 bs=100
 vae, z_dim = vae_builder()
 
-'''# trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
+# trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
 #emnist_transforms = {'retina':True, 'colorize':True}
 mnist_transforms = {'retina':True, 'colorize':True, 'scale':False, 'build_retina':False}
 mnist_test_transforms = {'retina':True, 'colorize':True, 'scale':False}
@@ -67,15 +69,21 @@ train_loader_noSkip = mnist_dataset.get_loader(bs)
 #sample_loader_noSkip = mnist_dataset.get_loader(25)
 test_loader_noSkip = mnist_test_dataset.get_loader(bs)
 #mnist_skip = torch.utils.data.DataLoader(dataset=ConcatDataset([block_dataset, mnist_skip]), batch_size=bs, shuffle=True,  drop_last= True)
-mnist_skip = mnist_skip.get_loader(bs)'''
+mnist_skip = mnist_skip.get_loader(bs)
 
 #add colorsquares dataset to training
 vae.to(device)
 
-dataloaders = []#[train_loader_noSkip, None, mnist_skip, test_loader_noSkip, None]
+dataloaders = [train_loader_noSkip, None, mnist_skip, test_loader_noSkip, None]
 
+#train mVAE
+print('Training: mVAE')
 train_mVAE(dataloaders, vae, 1000, folder_name, False)
 
 #train_labels
+print('Training: label networks')
+train_labelnet(dataloaders, vae, 15, folder_name)
 
 #train_classifiers
+print('Training: classifiers')
+train_classifiers(dataloaders, vae, folder_name)

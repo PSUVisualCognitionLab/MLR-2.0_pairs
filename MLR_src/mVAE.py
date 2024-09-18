@@ -207,6 +207,24 @@ class VAE_CNN(nn.Module):
 
         return self.fc31(h), self.fc32(h), self.fc33(h), self.fc34(h), self.fc35(l), self.fc36(l), 0, 0, hskip # mu, log_var
 
+    def activations(self, x):
+        if type(x) == list or type(x) == tuple:    #passing in a cropped+ location as input
+            l = x[2].cuda()
+            #sc = x[3].cuda()
+            x = x[1].cuda()
+            mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location, mu_scale, log_var_scale, hskip = self.encoder(x, l)
+        else:  #passing in just cropped image
+            x = x.cuda()
+            #sc = torch.zeros(x.size()[0], sc_dim).cuda()
+            l = torch.zeros(x.size()[0], self.l_dim).cuda()
+            mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location, mu_scale, log_var_scale, hskip = self.encoder(x, l)
+        
+        z_shape = self.sampling(mu_shape, log_var_shape)
+        z_color = self.sampling(mu_color, log_var_color)
+        z_location = self.sampling(mu_location, log_var_location)
+
+        return z_shape, z_color, z_location
+
     def location_encoder(self, l):
         return self.sampling_location(self.fc35(l), self.fc36(l))
 
@@ -360,14 +378,14 @@ class VAE_CNN(nn.Module):
         h = self.fc7(h).view(-1,3,imgsize,retina_size)
         return torch.sigmoid(h)
 
-    def activations(self, z_shape, z_color, z_location):
+    '''def activations(self, z_shape, z_color, z_location):
         h = F.relu(self.fc4c(z_color)) + F.relu(self.fc4s(z_shape)) + F.relu(self.fc4l(z_location))
         fc4c = self.fc4c(z_color)
         fc4s = self.fc4s(z_shape)
         fc4l = self.fc4l(z_location)
         fc5 = self.fc5(h)
         return fc4c, fc4s, fc4l, fc5
-
+    '''
     def forward_layers(self, l1, l2, layernum, whichdecode):
         hskip = l1
         if layernum == 1:
@@ -571,7 +589,7 @@ def loss_function_scale(recon_x, x, mu, log_var):
     return BCE + KLD
 
 # test recreate img with different features
-def progress_out(data, epoch, count, skip = False, filename = None):
+def progress_out(vae, data, epoch, count, skip = False, filename = None):
     sample_size = 25
     vae.eval()
     #make a filename if none is provided
@@ -637,7 +655,7 @@ def progress_out(data, epoch, count, skip = False, filename = None):
             filename1,
             nrow=sample_size, normalize=False)
 
-def test_loss(test_data, whichdecode = []):
+def test_loss(vae, test_data, whichdecode = []):
     loss_dict = {}
 
     for decoder in whichdecode:
@@ -829,10 +847,10 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         seen_labels = None #update_seen_labels(batch_labels,seen_labels)
         #if count % (0.8*max_iter) == 0:
           #  data, labels = next(sample_iter)
-           # progress_out(data, epoch, count)
+           # progress_out(vae, data, epoch, count)
         #elif count % 500 == 0: not for RED GREEN
          #   data = data_noSkip[0][1] + data_skip[0]
-          #  progress_out(data, epoch, count, skip= True)
+          #  progress_out(vae, data, epoch, count, skip= True)
         
         if i == max_iter +1:
             break
@@ -844,7 +862,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         test_data = next(test_iter)
         test_data = test_data[0]
 
-        test_loss_dict = test_loss(test_data, ['retinal', 'cropped'])
+        test_loss_dict = test_loss(vae, test_data, ['retinal', 'cropped'])
     
         return [retinal_loss_train, test_loss_dict['retinal'], cropped_loss_train, test_loss_dict['cropped']], seen_labels
 
@@ -902,7 +920,7 @@ def test(whichdecode, test_loader_noSkip, test_loader_skip, bs):
     test_loss /= len(test_loader_noSkip.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss))
 
-def activations(image, l= None):
+'''def activations(image, l= None):
     if l is None:
         l = torch.zeros(image.size()[0], vae.l_dim).cuda()
     mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location,j,j, hskip = vae.encoder(image, l)
@@ -938,324 +956,6 @@ def activation_fromBP(L1_activationBP, L2_activationBP, layernum):
         log_var_color = (vae.fc34(L2_activationBP))
         shape_act_bp = vae.sampling(mu_shape, log_var_shape)
         color_act_bp = vae.sampling(mu_color, log_var_color)
-    return shape_act_bp, color_act_bp
+    return shape_act_bp, color_act_bp'''
 
-def BPTokens_storage(bpsize, bpPortion,l1_act, l2_act, shape_act, color_act, location_act, shape_coeff, color_coeff, location_coeff, l1_coeff,l2_coeff, bs_testing, normalize_fact, std=1):
-    notLink_all = list()  # will be used to accumulate the specific token linkages
-    BP_in_all = list()  # will be used to accumulate the bp activations for each item
-    tokenBindings = list()
-    bp_in_shape_dim = shape_act.shape[1]  # neurons in the Bottleneck
-    bp_in_color_dim = color_act.shape[1]
-    bp_in_location_dim = location_act.shape[1]
-    bp_in_L1_dim = l1_act.shape[1]
-    bp_in_L2_dim = l2_act.shape[1]
-    #std = 1
-    shape_fw = torch.randn(bp_in_shape_dim,
-                            bpsize).cuda() *std  # make the randomized fixed weights to the binding pool
-    color_fw = torch.randn(bp_in_color_dim, bpsize).cuda() *std
-    location_fw = torch.randn(bp_in_location_dim, bpsize).cuda()*std
-    L1_fw = torch.randn(bp_in_L1_dim, bpsize).cuda() *std
-    L2_fw = torch.randn(bp_in_L2_dim, bpsize).cuda() *std
 
-    # ENCODING!  Store each item in the binding pool
-    for items in range(bs_testing):  # the number of images
-        tkLink_tot = torch.randperm(bpsize)  # for each token figure out which connections will be set to 0
-        notLink = tkLink_tot[bpPortion:]  # list of 0'd BPs for this token
-
-        BP_in_eachimg = torch.mm(shape_act[items, :].view(1, -1), shape_fw) * shape_coeff + torch.mm(
-        color_act[items, :].view(1, -1), color_fw) * color_coeff + torch.mm(
-        location_act[items, :].view(1, -1), location_fw) * location_coeff + torch.mm(
-        l1_act[items, :].view(1, -1), L1_fw) * l1_coeff + torch.mm(l2_act[items, :].view(1, -1), L2_fw) * l2_coeff
-
-        BP_in_eachimg[:, notLink] = 0  # set not linked activations to zero
-        BP_in_all.append(BP_in_eachimg)  # appending and stacking images
-        notLink_all.append(notLink)
-    # now sum all of the BPs together to form one consolidated BP activation set.
-    BP_in_items = torch.stack(BP_in_all)
-    BP_in_items = torch.squeeze(BP_in_items, 1)
-    BP_in_items = torch.sum(BP_in_items, 0).view(1, -1)  # Add them up
-    tokenBindings.append(torch.stack(notLink_all))  # this is the set of 0'd connections for each of the tokens
-    tokenBindings.append(shape_fw)
-    tokenBindings.append(color_fw)
-    tokenBindings.append(location_fw)
-    tokenBindings.append(L1_fw)
-    tokenBindings.append(L2_fw)
-
-    return BP_in_items, tokenBindings
-
-
-
-def BPTokens_retrieveByToken( bpsize, bpPortion, BP_in_items,tokenBindings, l1_act, l2_act, shape_act, color_act, location_act,bs_testing,normalize_fact):
-# NOW REMEMBER THE STORED ITEMS
-    #notLink_all = list()  # will be used to accumulate the specific token linkages
-    BP_in_all = list()  # will be used to accumulate the bp activations for each item
-    notLink_all = tokenBindings[0]
-    shape_fw = tokenBindings[1]
-    color_fw = tokenBindings[2]
-    location_fw = tokenBindings[3]
-    L1_fw = tokenBindings[4]
-    L2_fw = tokenBindings[5]
-   
-    tokenBindings.append(shape_fw)
-    tokenBindings.append(color_fw)
-    tokenBindings.append(location_fw)
-    tokenBindings.append(L1_fw)
-    tokenBindings.append(L2_fw)
-
-    bp_in_shape_dim = shape_act.shape[1]  # neurons in the Bottleneck
-    bp_in_color_dim = color_act.shape[1]
-    bp_in_location_dim = location_act.shape[1]
-    bp_in_L1_dim = l1_act.shape[1]
-    bp_in_L2_dim = l2_act.shape[1]
-
-    shape_out_all = torch.zeros(bs_testing,
-                                bp_in_shape_dim).cuda()  # will be used to accumulate the reconstructed shapes
-    color_out_all = torch.zeros(bs_testing,
-                                bp_in_color_dim).cuda()  # will be used to accumulate the reconstructed colors
-    location_out_all = torch.zeros(bs_testing,
-                                bp_in_location_dim).cuda()  # will be used to accumulate the reconstructed location
-    L1_out_all = torch.zeros(bs_testing, bp_in_L1_dim).cuda()
-    L2_out_all = torch.zeros(bs_testing, bp_in_L2_dim).cuda()
-    BP_in_items = BP_in_items.repeat(bs_testing, 1)  # repeat the matrix to the number of items to easier retrieve
-    for items in range(bs_testing):  # for each item to be retrieved
-        BP_in_items[items, notLink_all[items, :]] = 0  # set the BPs to zero for this token retrieval
-        L1_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1),L1_fw.t()).cuda()  # do the actual reconstruction
-        L1_out_all[items,:] = L1_out_eachimg / bpPortion  # put the reconstructions into a big tensor and then normalize by the effective # of BP nodes
-
-        L2_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1),L2_fw.t()).cuda()  # do the actual reconstruction
-        L2_out_all[items, :] = L2_out_eachimg / bpPortion  #
-
-        shape_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1), shape_fw.t()).cuda()  # do the actual reconstruction
-        color_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1), color_fw.t()).cuda()
-        location_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1), location_fw.t()).cuda()
-        shape_out_all[items, :] = shape_out_eachimg / bpPortion  # put the reconstructions into a bit tensor and then normalize by the effective # of BP nodes
-        color_out_all[items, :] = color_out_eachimg / bpPortion
-        location_out_all[items, :] = location_out_eachimg / bpPortion
-
-    return shape_out_all, color_out_all, location_out_all, L2_out_all, L1_out_all
-
-# defining the classifiers
-clf_ss = svm.SVC(C=10, gamma='scale', kernel='rbf')  # define the classifier for shape
-clf_sc = svm.SVC(C=10, gamma='scale', kernel='rbf')  #classify shape map against color labels
-clf_cc = svm.SVC(C=10, gamma='scale', kernel='rbf')  # define the classifier for color
-clf_cs = svm.SVC(C=10, gamma='scale', kernel='rbf')#classify color map against shape labels
-
-
-#training the shape map on shape labels and color labels
-def classifier_shape_train(whichdecode_use, train_dataset):
-    vae.eval()
-    with torch.no_grad():
-        data, labels  =next(iter(train_dataset))
-        train_shapelabels=labels[0].clone()
-        train_colorlabels=labels[1].clone()
-
-        data = data.cuda()
-        recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use)
-        z_shape = vae.sampling(mu_shape, log_var_shape).cuda()
-        print('training shape bottleneck against color labels sc')
-        clf_sc.fit(z_shape.cpu().numpy(), train_colorlabels)
-
-        print('training shape bottleneck against shape labels ss')
-        clf_ss.fit(z_shape.cpu().numpy(), train_shapelabels)
-
-#testing the shape classifier (one image at a time)
-def classifier_shape_test(whichdecode_use, clf_ss, clf_sc, test_dataset, verbose=0):
-    vae.eval()
-    with torch.no_grad():
-        data, labels  =next(iter(test_dataset))
-        test_shapelabels=labels[0].clone()
-        test_colorlabels=labels[1].clone()
-
-        data = data.cuda()
-        recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use)
-        z_shape = vae.sampling(mu_shape, log_var_shape).cuda()
-        pred_ss = torch.tensor(clf_ss.predict(z_shape.cpu()))
-        pred_sc = torch.tensor(clf_sc.predict(z_shape.cpu()))
-
-        SSreport = torch.eq(test_shapelabels.cpu(), pred_ss).sum().float() / len(pred_ss)
-        SCreport = torch.eq(test_colorlabels.cpu(), pred_sc).sum().float() / len(pred_sc)
-
-        if verbose ==1:
-            print('----*************---------shape classification from shape map')
-            print(confusion_matrix(test_shapelabels, pred_ss))
-            print(classification_report(test_shapelabels, pred_ss))
-            print('----************----------color classification from shape map')
-            print(confusion_matrix(test_colorlabels, pred_sc))
-            print(classification_report(test_colorlabels, pred_sc))
-
-    return pred_ss, pred_sc, SSreport, SCreport
-
-#training the color map on shape and color labels
-def classifier_color_train(whichdecode_use, train_dataset):
-    vae.eval()
-    with torch.no_grad():
-        data, labels  =next(iter(train_dataset))
-        train_shapelabels=labels[0].clone()
-        train_colorlabels=labels[1].clone()
-        data = data.cuda()
-        recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use)
-        z_color = vae.sampling(mu_color, log_var_color).cuda()
-        print('training color bottleneck against color labels cc')
-        clf_cc.fit(z_color.cpu().numpy(), train_colorlabels)
-
-        print('training color bottleneck against shape labels cs')
-        clf_cs.fit(z_color.cpu().numpy(), train_shapelabels)
-
-#testing the color classifier (one image at a time)
-def classifier_color_test(whichdecode_use, clf_cc, clf_cs, test_dataset, verbose=0):
-    vae.eval()
-    with torch.no_grad():
-        data, labels  =next(iter(test_dataset))
-        train_shapelabels=labels[0].clone()
-        train_colorlabels=labels[1].clone()
-        data = data.cuda()
-        recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use)
-
-        z_color = vae.sampling(mu_color, log_var_color).cuda()
-        pred_cc = torch.tensor(clf_cc.predict(z_color.cpu()))
-        pred_cs = torch.tensor(clf_cs.predict(z_color.cpu()))
-
-        CCreport = torch.eq(test_colorlabels.cpu(), pred_cc).sum().float() / len(pred_cc)
-        CSreport = torch.eq(test_shapelabels.cpu(), pred_cs).sum().float() / len(pred_cs)
-
-        if verbose==1:
-            print('----**********-------color classification from color map')
-            print(confusion_matrix(test_colorlabels, pred_cc))
-            print(classification_report(test_colorlabels, pred_cc))
-
-            print('----**********------shape classification from color map')
-            print(confusion_matrix(test_shapelabels, pred_cs))
-            print(classification_report(test_shapelabels, pred_cs))
-
-    return pred_cc, pred_cs, CCreport, CSreport
-
-
-
-#testing on shape for multiple images stored in memory
-
-def classifier_shapemap_test_imgs(shape, shapelabels, colorlabels,numImg, clf_shapeS, clf_shapeC, test_dataset, verbose = 0):
-
-    global numcolors
-
-    numImg = int(numImg)
-
-    with torch.no_grad():
-        predicted_labels=torch.zeros(1,numImg)
-        shape = torch.squeeze(shape, dim=1)
-        shape = shape.cuda()
-        test_colorlabels = thecolorlabels(test_dataset)
-        pred_ssimg = torch.tensor(clf_shapeS.predict(shape.cpu()))
-
-        pred_scimg = torch.tensor(clf_shapeC.predict(shape.cpu()))
-
-        SSreport = torch.eq(shapelabels.cpu(), pred_ssimg).sum().float() / len(pred_ssimg)
-        SCreport = torch.eq(colorlabels[0:numImg].cpu(), pred_scimg).sum().float() / len(pred_scimg)
-
-        if verbose==1:
-            print('----*************---------shape classification from shape map')
-            print(confusion_matrix(shapelabels[0:numImg], pred_ssimg))
-            print(classification_report(shapelabels[0:numImg], pred_ssimg))
-            print('----************----------color classification from shape map')
-            print(confusion_matrix(colorlabels[0:numImg], pred_scimg))
-            print(classification_report(test_colorlabels[0:numImg], pred_scimg))
-    return pred_ssimg, pred_scimg, SSreport, SCreport
-
-
-#testing on color for multiple images stored in memory
-def classifier_colormap_test_imgs(color, shapelabels, colorlabels,numImg, clf_colorC, clf_colorS, test_dataset, verbose = 0):
-
-
-    numImg = int(numImg)
-
-
-    with torch.no_grad():
-
-        color = torch.squeeze(color, dim=1)
-        color = color.cuda()
-        test_colorlabels = thecolorlabels(test_dataset)
-
-
-        pred_ccimg = torch.tensor(clf_colorC.predict(color.cpu()))
-        pred_csimg = torch.tensor(clf_colorS.predict(color.cpu()))
-
-
-        CCreport = torch.eq(colorlabels[0:numImg].cpu(), pred_ccimg).sum().float() / len(pred_ccimg)
-        CSreport = torch.eq(shapelabels.cpu(), pred_csimg).sum().float() / len(pred_csimg)
-
-
-        if verbose == 1:
-            print('----*************---------color classification from color map')
-            print(confusion_matrix(test_colorlabels[0:numImg], pred_ccimg))
-            print(classification_report(colorlabels[0:numImg], pred_ccimg))
-            print('----************----------shape classification from color map')
-            print(confusion_matrix(shapelabels[0:numImg], pred_csimg))
-            print(classification_report(shapelabels[0:numImg], pred_csimg))
-
-        return pred_ccimg, pred_csimg, CCreport, CSreport
-
-# shape label network
-class VAEshapelabels(nn.Module):
-    def __init__(self, xlabel_dim, hlabel_dim,  zlabel_dim):
-        super(VAEshapelabels, self).__init__()
-
-        # encoder part
-        self.fc1label = nn.Linear(xlabel_dim, hlabel_dim)
-        self.fc21label= nn.Linear(hlabel_dim,  zlabel_dim) #mu shape
-        self.fc22label = nn.Linear(hlabel_dim, zlabel_dim) #log-var shape
-
-
-    def sampling_labels (self, mu, log_var, n=1):
-        std = torch.exp(0.5 * log_var)
-        eps = torch.randn_like(std) * n
-        return mu + eps * std
-
-    def forward(self, x_labels, n):
-        h = F.relu(self.fc1label(x_labels))
-        mu_shape_label = self.fc21label(h)
-        log_var_shape_label=self.fc22label(h)
-        z_shape_label = self.sampling_labels(mu_shape_label, log_var_shape_label, n)
-        return  z_shape_label
-
-# color label network
-class VAEcolorlabels(nn.Module):
-    def __init__(self, xlabel_dim, hlabel_dim, zlabel_dim):
-        super(VAEcolorlabels, self).__init__()
-
-        # encoder part
-        self.fc1label = nn.Linear(xlabel_dim, hlabel_dim)
-        self.fc21label = nn.Linear(hlabel_dim, zlabel_dim)  # mu color
-        self.fc22label = nn.Linear(hlabel_dim, zlabel_dim)  # log-var color
-
-    def sampling_labels(self, mu, log_var):
-        std = torch.exp(0.5 * log_var)
-        eps = torch.randn_like(std)
-        return mu + eps * std
-
-    def forward(self, x_labels):
-        h = F.relu(self.fc1label(x_labels))
-        mu_shape_label = self.fc21label(h)
-        log_var_shape_label = self.fc22label(h)
-        z_color_label = self.sampling_labels(mu_shape_label, log_var_shape_label)
-        return  z_color_label
-
-# location label network
-class VAElocationlabels(nn.Module):
-    def __init__(self, xlabel_dim, hlabel_dim,  zlabel_dim):
-        super(VAElocationlabels, self).__init__()
-
-        # encoder part
-        self.fc1label = nn.Linear(xlabel_dim, hlabel_dim)
-        self.fc21label= nn.Linear(hlabel_dim,  zlabel_dim) #mu shape
-        self.fc22label = nn.Linear(hlabel_dim, zlabel_dim) #log-var shape
-
-    def sampling_labels(self, mu, log_var):
-        std = torch.exp(0.75 * log_var)
-        eps = torch.randn_like(std)
-        return mu + eps * std
-
-    def forward(self, x_labels):
-        h = F.relu(self.fc1label(x_labels))
-        mu_shape_label = self.fc21label(h)
-        log_var_shape_label=self.fc22label(h)
-        z_shape_label = self.sampling_labels(mu_shape_label, log_var_shape_label)
-        return  z_shape_label
