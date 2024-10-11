@@ -1,5 +1,5 @@
 # prerequisites
-from classifiers import classifier_shape_train, classifier_color_train, clf_sc, clf_ss, clf_cc, clf_cs, classifier_shape_test, classifier_color_test
+from MLR_src.classifiers import classifier_shape_train, classifier_color_train, clf_sc, clf_ss, clf_cc, clf_cs, classifier_shape_test, classifier_color_test
 from joblib import dump
 
 def train_classifiers(dataloaders, vae, checkpoint_folder):

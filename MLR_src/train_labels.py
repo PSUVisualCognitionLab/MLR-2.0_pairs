@@ -1,4 +1,4 @@
-from label_network import *
+from MLR_src.label_network import *
 import torch
 
 def train_labelnet(dataloaders, vae, epoch_count, checkpoint_folder):

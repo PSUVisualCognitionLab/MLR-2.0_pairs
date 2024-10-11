@@ -288,7 +288,10 @@ class VAE_CNN(nn.Module):
         #print(h.size())
         h = h.view(-1, 3, retina_size, retina_size)
 
-        return {'recon':torch.sigmoid(h), 'crop':crop_out}
+        if self.training:
+            return {'recon':torch.sigmoid(h), 'crop':crop_out}
+        else:
+            return torch.sigmoid(h)
 
     def decoder_color(self, z_shape, z_color, hskip):
         h = F.relu(self.fc4c(z_color)) * self.color_scale
@@ -693,15 +696,28 @@ def place_crop(crop_data,loc): # retina placement on GPU for training
     #print(out_retina.size())
     return out_retina
 
+def component_to_grad(comp): # determine gradient for componeent training
+    if comp == 'shape':
+        return ['shape']
+    elif comp == 'color':
+        return ['color']
+    elif comp == 'cropped':
+        return ['shape', 'color']
+    elif comp == 'skip_cropped':
+        return ['skip']
+    elif comp == 'retinal':
+        return []
+    elif comp == 'location':
+        return ['location']
+    else:
+        raise Exception(f'Invalid component: {comp}')
 
-def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels = {}, blocks_dataset = None):
+def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels = {}, components = {}, blocks_dataset = None):
     vae.train()
     train_loader_noSkip, emnist_skip, fmnist_skip, test_loader, sample_loader = dataloaders[0], dataloaders[1], dataloaders[2], dataloaders[3], dataloaders[4]
     train_loss = 0
     dataiter_noSkip = iter(train_loader_noSkip) # the latent space is trained on EMNIST, MNIST, and f-MNIST
-    m = 5 # number of seperate training decoders used
     if fmnist_skip != None:
-        m=7
         #dataiter_emnist_skip= iter(emnist_skip) # The skip connection is trained on pairs from EMNIST, MNIST, and f-MNIST composed on top of each other
         dataiter_fmnist_skip= iter(fmnist_skip)
     test_iter = iter(test_loader)
@@ -711,9 +727,6 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
     loader=tqdm(train_loader_noSkip, total = max_iter)
 
     retinal_loss_train, cropped_loss_train = 0, 0 # loss metrics returned to Training.py
-
-    if epoch >= 250:
-        m = 6
 
     for i,j in enumerate(loader):
         count += 1
@@ -727,90 +740,17 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         
         optimizer.zero_grad()
         
-        if count% m == 0:
-            if epoch <= 2500:
-                whichdecode_use = 'shape'
-                keepgrad = ['shape']
-            else:
-                whichdecode_use = 'retinal'
-                keepgrad = [] 
+        comp_ind = count % len(components)
+        whichdecode_use = components[comp_ind]
+        keepgrad = component_to_grad(whichdecode_use)
 
-        elif count% m == 1:
-            if epoch <= 2500:
-                whichdecode_use = 'color'
-                keepgrad = ['color']
-            else:
-                whichdecode_use = 'retinal'
-                keepgrad = [] 
-
-        elif count% m == 2:
-            #whichdecode_use = 'location'
-            #keepgrad = ['location']
+        if whichdecode_use == 'skip_cropped':
             data_skip = next(dataiter_fmnist_skip)
             r = random.randint(0,1)
             if r == 1:
                 data = data_skip[0]
             else:
                 data = data[1]
-            whichdecode_use = 'skip_cropped'
-            keepgrad = ['skip']
-
-        elif count% m == 3:
-            if epoch <= 2000:
-                '''whichdecode_use = 'location'
-                keepgrad = ['location']'''
-                whichdecode_use = 'cropped'
-                keepgrad = ['shape', 'color']
-            else:
-                whichdecode_use = 'retinal'
-                keepgrad = [] #all except skip connection
-
-        elif count% m == 4:
-            if epoch >=1000: #epoch % 8 != 0 and epoch >= 100:
-                whichdecode_use = 'retinal'
-                keepgrad = []
-            else:
-                r = random.randint(0,4)
-                if r == 1:
-                    whichdecode_use = 'shape'
-                    keepgrad = ['shape']
-                    #data = blocks #TEMP
-                elif r == 2:
-                    whichdecode_use = 'color'
-                    keepgrad = ['color']
-                    #data = blocks #TEMP
-                else:
-                    whichdecode_use = 'cropped'
-                    keepgrad = ['shape', 'color']
-                    #data = blocks #TEMP
-                
-                '''else:
-                    data_skip = next(dataiter_fmnist_skip)
-                    r = random.randint(0,1)
-                    if r == 1:
-                        data = data_skip[0]
-                    else:
-                        data = data[1]
-                    whichdecode_use = 'skip_cropped'
-                    keepgrad = ['skip']'''
-
-        elif count% m == 5:
-            if epoch <= 1000:
-                whichdecode_use = 'cropped'
-                keepgrad = ['shape', 'color']
-            else:
-                whichdecode_use = 'retinal'
-                keepgrad = []
-
-        else:
-            data_skip = next(dataiter_fmnist_skip)
-            r = random.randint(0,1)
-            if r == 1:
-                data = data_skip[0]
-            else:
-                data = data[1]
-            whichdecode_use = 'skip_cropped'
-            keepgrad = ['skip']
         
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape, mu_location, log_var_location, mu_scale, log_var_scale = vae(data, whichdecode_use, keepgrad)
             

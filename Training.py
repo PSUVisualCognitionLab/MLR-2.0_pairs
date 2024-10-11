@@ -16,6 +16,7 @@ from MLR_src.dataset_builder import Dataset
 from MLR_src.train_mVAE import train_mVAE
 from MLR_src.train_labels import train_labelnet
 from MLR_src.train_classifiers import train_classifiers
+from torchvision import datasets, transforms, utils
 
 folder_name = 'test'
 #torch.set_default_dtype(torch.float64)
@@ -47,21 +48,27 @@ bs=100
 vae, z_dim = vae_builder()
 
 # trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
-#emnist_transforms = {'retina':True, 'colorize':True}
 mnist_transforms = {'retina':True, 'colorize':True, 'scale':False, 'build_retina':False}
+
 mnist_test_transforms = {'retina':True, 'colorize':True, 'scale':False}
 skip_transforms = {'skip':True, 'colorize':True}
 
-#emnist_dataset = Dataset('emnist', emnist_transforms)
+#emnist_dataset = Dataset('emnist', mnist_transforms)
 mnist_dataset = Dataset('mnist', mnist_transforms)
 
-#emnist_test_dataset = Dataset('emnist', emnist_transforms, train= False)
+#emnist_test_dataset = Dataset('emnist', mnist_test_transforms, train= False)
 mnist_test_dataset = Dataset('mnist', mnist_test_transforms, train= False)
 
 #blocks
-#block_dataset = torch.load('original_1.pth').cuda()
+block_dataset = Dataset('square', {'colorize':True, 'retina':False})
+block_loader = block_dataset.get_loader(3)
+#blocks, labels = next(iter(block_loader))
+#utils.save_image( blocks,
+ #           'testblock.png',
+  #          nrow=1, normalize=False)
 
-#emnist_skip = Dataset('emnist', skip_transforms)
+
+emnist_skip = Dataset('emnist', skip_transforms)
 mnist_skip = Dataset('mnist', skip_transforms)
 
 #concat datasets and init dataloaders
@@ -78,7 +85,7 @@ dataloaders = [train_loader_noSkip, None, mnist_skip, test_loader_noSkip, None]
 
 #train mVAE
 print('Training: mVAE')
-train_mVAE(dataloaders, vae, 1000, folder_name, False)
+train_mVAE(dataloaders, vae, 60, folder_name, False)
 
 #train_labels
 print('Training: label networks')
