@@ -121,7 +121,7 @@ class PadAndPosition:
         if self.scale != -1:
             return torch_transforms.ToTensor()(new_img), torch_transforms.ToTensor()(img), position, scale_dist #retinal, crop, position, scale
         else:
-            return torch_transforms.ToTensor()(new_img), torch_transforms.ToTensor()(img), position
+            return torch_transforms.ToTensor()(new_img), torch_transforms.ToTensor()(img), position  #retinal, crop, position
 
 class ToTensor:
     def __init__(self):
@@ -137,8 +137,8 @@ def generate_square_crop_image(image_size=(28, 28)):
     image_array = np.zeros((image_size[0], image_size[1]), dtype=np.uint8)
     
     # Calculate center position for the square
-    x = int((image_size[0] - square_size) // 2)
-    y = int((image_size[1] - square_size) // 2)
+    x = int((image_size[0] - square_size) // 2) + random.randint(-3,3)
+    y = int((image_size[1] - square_size) // 2) + random.randint(-3,3)
     
     # Draw the white square (255 for white)
     image_array[y:y+square_size, x:x+square_size] = 255

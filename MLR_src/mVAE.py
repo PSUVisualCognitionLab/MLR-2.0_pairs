@@ -46,12 +46,13 @@ import copy
 
 # load a saved vae checkpoint
 def load_checkpoint(filepath, d=0):
+    vae, z = vae_builder()
     if torch.cuda.is_available():
         device = torch.device(f'cuda:{d}')
         torch.cuda.set_device(d)
     else:
         device = 'cpu'
-    checkpoint = torch.load(filepath,device)
+    checkpoint = torch.load(filepath,device, weights_only = True)
     vae.load_state_dict(checkpoint['state_dict'])
     vae.to(device)
     return vae
@@ -120,7 +121,7 @@ h_dim1 = 256
 h_dim2 = 128
 z_dim = 8
 l_dim = 64*2 # 2dim (2, retina_size) position
-zl_dim = 3
+zl_dim = z_dim
 sc_dim = 10
 
 
@@ -506,9 +507,6 @@ def vae_builder(vae_type = vae_type_flag, x_dim = x_dim, h_dim1 = h_dim1, h_dim2
 
     folder_path = f'sample_{vae_type}_{data_set_flag}'
 
-    if not os.path.exists(folder_path):
-        os.mkdir(folder_path)
-
     return vae, z_dim
 
 ########Actually build it
@@ -712,11 +710,12 @@ def component_to_grad(comp): # determine gradient for componeent training
     else:
         raise Exception(f'Invalid component: {comp}')
 
-def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels = {}, components = {}, blocks_dataset = None):
+def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels = {}, components = {}):
     vae.train()
-    train_loader_noSkip, emnist_skip, fmnist_skip, test_loader, sample_loader = dataloaders[0], dataloaders[1], dataloaders[2], dataloaders[3], dataloaders[4]
+    train_loader_noSkip, emnist_skip, fmnist_skip, test_loader, sample_loader, block_loader = dataloaders[0], dataloaders[1], dataloaders[2], dataloaders[3], dataloaders[4], dataloaders[5]
     train_loss = 0
     dataiter_noSkip = iter(train_loader_noSkip) # the latent space is trained on EMNIST, MNIST, and f-MNIST
+    block_iter = iter(block_loader)
     if fmnist_skip != None:
         #dataiter_emnist_skip= iter(emnist_skip) # The skip connection is trained on pairs from EMNIST, MNIST, and f-MNIST composed on top of each other
         dataiter_fmnist_skip= iter(fmnist_skip)
@@ -727,19 +726,20 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
     loader=tqdm(train_loader_noSkip, total = max_iter)
 
     retinal_loss_train, cropped_loss_train = 0, 0 # loss metrics returned to Training.py
+    block_data, block_labels = next(block_iter)
 
     for i,j in enumerate(loader):
         count += 1
-        data_noSkip, batch_labels = next(dataiter_noSkip)
-    
-        data = data_noSkip
-        #z = random.randint(0,len(blocks_dataset)-201)
-        #blocks = blocks_dataset[z:z+200]
-        #print(blocks.size())
-        #data = blocks
+        data, batch_labels = next(dataiter_noSkip)
+
+        # shuffle in the block dataset
+        z = random.randint(0,10)
+        if z <= 1:
+            data = block_data
         
         optimizer.zero_grad()
         
+        # determine which component is being trained
         comp_ind = count % len(components)
         whichdecode_use = components[comp_ind]
         keepgrad = component_to_grad(whichdecode_use)
