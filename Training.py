@@ -2,7 +2,7 @@ import sys
 
 if len(sys.argv[1:]) != 0:
     d = int(sys.argv[1:][0])
-    load = False#bool(sys.argv[1:][1])
+    load = bool(sys.argv[1:][1])
 else:
     d=1
     load = False
@@ -39,13 +39,14 @@ if torch.cuda.is_available():
 else:
     device = 'cpu'
 
+bs=100
+
 # to resume training an existing model checkpoint, uncomment the following line with the checkpoints filename
 if load is True:
-    load_checkpoint(f'{checkpoint_folder_path}/mVAE_checkpoint.pth', d)
+    vae = load_checkpoint(f'{checkpoint_folder_path}/mVAE_checkpoint.pth', d)
     print('checkpoint loaded')
-
-bs=100
-vae, z_dim = vae_builder()
+else:
+    vae, z_dim = vae_builder()
 
 # trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
 mnist_transforms = {'retina':True, 'colorize':True, 'scale':False, 'build_retina':False}
@@ -60,15 +61,15 @@ mnist_dataset = Dataset('mnist', mnist_transforms)
 mnist_test_dataset = Dataset('mnist', mnist_test_transforms, train= False)
 
 #blocks
-block_dataset = Dataset('square', {'colorize':True, 'retina':False})
-block_loader = block_dataset.get_loader(3)
+block_dataset = Dataset('square', {'colorize':True, 'retina':True, 'build_retina':False})
+block_loader = block_dataset.get_loader(bs)
 #blocks, labels = next(iter(block_loader))
 #utils.save_image( blocks,
  #           'testblock.png',
   #          nrow=1, normalize=False)
 
 
-emnist_skip = Dataset('emnist', skip_transforms)
+#emnist_skip = Dataset('emnist', skip_transforms)
 mnist_skip = Dataset('mnist', skip_transforms)
 
 #concat datasets and init dataloaders
@@ -81,11 +82,11 @@ mnist_skip = mnist_skip.get_loader(bs)
 #add colorsquares dataset to training
 vae.to(device)
 
-dataloaders = [train_loader_noSkip, None, mnist_skip, test_loader_noSkip, None]
+dataloaders = [train_loader_noSkip, None, mnist_skip, test_loader_noSkip, None, block_loader]
 
 #train mVAE
 print('Training: mVAE')
-train_mVAE(dataloaders, vae, 60, folder_name, False)
+train_mVAE(dataloaders, vae, 1000, folder_name)
 
 #train_labels
 print('Training: label networks')
