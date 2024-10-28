@@ -1,11 +1,13 @@
 import sys
+import argparse
 
-if len(sys.argv[1:]) != 0:
-    d = int(sys.argv[1:][0])
-    load = bool(sys.argv[1:][1])
-else:
-    d=1
-    load = False
+parser = argparse.ArgumentParser(description="Training of MLR-2.0")
+parser.add_argument("--load_prev", type=bool, default=False, help="Begin training from previous checkpoints")
+parser.add_argument("--cuda_device", type=int, default=1, help="Which cuda device to use")
+parser.add_argument("--cuda", type=bool, default=True, help="Cuda availability")
+parser.add_argument("--folder", type=str, default='test', help="Where to store checkpoints in checkpoints/")
+parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label_net', 'SVM'], help="Which components to train")
+args = parser.parse_args()
 
 # prerequisites
 import torch
@@ -18,17 +20,18 @@ from MLR_src.train_labels import train_labelnet
 from MLR_src.train_classifiers import train_classifiers
 from torchvision import datasets, transforms, utils
 
-folder_name = 'test'
+folder_name = args.folder
 #torch.set_default_dtype(torch.float64)
 checkpoint_folder_path = f'checkpoints/{folder_name}/' # the output folder for the trained model versions
 
 if not os.path.exists(checkpoint_folder_path):
     os.mkdir(checkpoint_folder_path)
 
-if len(sys.argv[1:]) != 0:
-    d = int(sys.argv[1:][0])
-else:
-    d=1
+if args.cuda is True:
+    d = args.cuda_device
+
+load = args.load_prev
+
 print(f'Device: {d}')
 print(f'Load: {load}')
 
@@ -84,14 +87,19 @@ vae.to(device)
 
 dataloaders = [train_loader_noSkip, None, mnist_skip, test_loader_noSkip, None, block_loader]
 
+print(f'Training: {args.train_list}')
+
 #train mVAE
-print('Training: mVAE')
-train_mVAE(dataloaders, vae, 1000, folder_name)
+if 'mVAE' in args.train_list:
+    print('Training: mVAE')
+    train_mVAE(dataloaders, vae, 1000, folder_name)
 
 #train_labels
-print('Training: label networks')
-train_labelnet(dataloaders, vae, 15, folder_name)
+if 'label_net' in args.train_list:
+    print('Training: label networks')
+    train_labelnet(dataloaders, vae, 15, folder_name)
 
 #train_classifiers
-print('Training: classifiers')
-train_classifiers(dataloaders, vae, folder_name)
+if 'SVM' in args.train_list:
+    print('Training: classifiers')
+    train_classifiers(dataloaders, vae, folder_name)

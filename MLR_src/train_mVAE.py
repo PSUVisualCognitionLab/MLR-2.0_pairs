@@ -5,21 +5,16 @@ from MLR_src.mVAE import train
 import torch.optim as optim
 from MLR_src.wandb_setup import initialize_wandb, log_system_metrics
 
-def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder):
+def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, start_epoch = 1):
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     initialize_wandb('2d-retina-train', {'version':'MLR_2.0_2D_RETINA'})
 
     seen_labels = {}
-    #components = ['color'] + ['shape'] + ['cropped'] * 2 + ['skip_cropped'] + ['location'] * 2
-    components = ['location', 'retinal', 'retinal']
+    components = ['color'] + ['shape'] + ['cropped'] * 2 + ['skip_cropped'] + ['location'] * 2
 
-    for epoch in range(718, epoch_count): #708
-        '''if epoch >= 200:
+    for epoch in range(start_epoch, epoch_count):
+        if epoch >= 120:
             components = ['location', 'retinal', 'retinal']
-        elif epoch >= 500:
-            components = ['color'] + ['shape'] + ['cropped'] + ['skip_cropped'] + ['location']
-        elif epoch >= 560:
-            components = ['retinal', 'retinal']'''
 
         loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components)
 
