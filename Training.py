@@ -7,6 +7,7 @@ parser.add_argument("--cuda_device", type=int, default=1, help="Which cuda devic
 parser.add_argument("--cuda", type=bool, default=True, help="Cuda availability")
 parser.add_argument("--folder", type=str, default='test', help="Where to store checkpoints in checkpoints/")
 parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label_net', 'SVM'], help="Which components to train")
+parser.add_argument("--wandb", type=bool, default=False, help="Track training with wandb")
 args = parser.parse_args()
 
 # prerequisites
@@ -23,6 +24,9 @@ from torchvision import datasets, transforms, utils
 folder_name = args.folder
 #torch.set_default_dtype(torch.float64)
 checkpoint_folder_path = f'checkpoints/{folder_name}/' # the output folder for the trained model versions
+
+if not os.path.exists('checkpoints/'):
+    os.mkdir('checkpoints/')
 
 if not os.path.exists(checkpoint_folder_path):
     os.mkdir(checkpoint_folder_path)
@@ -92,7 +96,7 @@ print(f'Training: {args.train_list}')
 #train mVAE
 if 'mVAE' in args.train_list:
     print('Training: mVAE')
-    train_mVAE(dataloaders, vae, 1000, folder_name)
+    train_mVAE(dataloaders, vae, 1000, folder_name, args.wandb)
 
 #train_labels
 if 'label_net' in args.train_list:
