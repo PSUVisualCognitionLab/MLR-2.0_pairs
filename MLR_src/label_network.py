@@ -98,20 +98,20 @@ def loss_label(label_act,image_act):
 
     return e
 
-def train_labels(vae, epoch, train_loader, optimizer_shapelabels, optimizer_colorlabels):
+def train_labels(vae, epoch, train_loader, optimizer_shapelabels, optimizer_colorlabels, folder_path):
     global colorlabels, numcolors    
-
+    device = next(vae.parameters()).device
     numcolors = 0
     train_loss_shapelabel = 0
     train_loss_colorlabel = 0
 
-    vae_shape_labels.train()
-    vae_color_labels.train()
+    vae_shape_labels.train().to(device)
+    vae_color_labels.train().to(device)
 
     dataiter = iter(train_loader)
 
     # labels_color=0
-    max_iter = 2000
+    max_iter = 100
     for i in tqdm(range(len(train_loader)), total= max_iter):
         optimizer_shapelabels.zero_grad()
         optimizer_colorlabels.zero_grad()
@@ -120,17 +120,17 @@ def train_labels(vae, epoch, train_loader, optimizer_shapelabels, optimizer_colo
         labels_for_shape=labels[0].clone()
         labels_for_color=labels[1].clone()
               
-        image = image.cuda()
-        labels_shape = labels_for_shape.cuda()
+        image = image[1].cuda()
+        labels_shape = labels_for_shape.to(device)
         input_oneHot = F.one_hot(labels_shape, num_classes=s_classes) # 36 classes in emnist, 10 classes in f-mnist
         input_oneHot = input_oneHot.float()
-        input_oneHot = input_oneHot.cuda()
+        input_oneHot = input_oneHot.to(device)
 
         labels_color = labels_for_color  # get the color labels
-        labels_color = labels_color.cuda()
+        labels_color = labels_color.to(device)
         color_oneHot = F.one_hot(labels_color, num_classes=10)
         color_oneHot = color_oneHot.float()
-        color_oneHot = color_oneHot.cuda()
+        color_oneHot = color_oneHot.to(device)
         
         n = 1 # sampling noise
         z_shape_label = vae_shape_labels(input_oneHot,n)
@@ -185,7 +185,7 @@ def train_labels(vae, epoch, train_loader, optimizer_shapelabels, optimizer_colo
                      recon_labels.view(sample_size, 3, 28, 28),
                      recon_shapeOnly.view(sample_size, 3, 28, 28),
                      recon_colorOnly.view(sample_size, 3, 28, 28)], 0),
-                f'sample_training_labels/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png',
+                f'{folder_path}{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png',
                 nrow=sample_size,
                 normalize=False,
             )

@@ -10,15 +10,16 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder):
     initialize_wandb('2d-retina-train', {'version':'MLR_2.0_2D_RETINA'})
 
     seen_labels = {}
-    components = ['color'] + ['shape'] + ['cropped'] * 2 + ['skip_cropped'] + ['location'] * 2
+    #components = ['color'] + ['shape'] + ['cropped'] * 2 + ['skip_cropped'] + ['location'] * 2
+    components = ['location', 'retinal', 'retinal']
 
-    for epoch in range(218, epoch_count):
-        if epoch >= 200:
+    for epoch in range(718, epoch_count): #708
+        '''if epoch >= 200:
             components = ['location', 'retinal', 'retinal']
         elif epoch >= 500:
             components = ['color'] + ['shape'] + ['cropped'] + ['skip_cropped'] + ['location']
         elif epoch >= 560:
-            components = ['retinal', 'retinal']
+            components = ['retinal', 'retinal']'''
 
         loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components)
 
