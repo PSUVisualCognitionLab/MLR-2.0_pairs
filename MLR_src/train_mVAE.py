@@ -1,14 +1,15 @@
 # prerequisites
 import torch
-import wandb
 from MLR_src.mVAE import train
 import torch.optim as optim
-from MLR_src.wandb_setup import initialize_wandb, log_system_metrics
 
-def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, start_epoch = 1):
+def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, start_epoch = 1):
+    if use_wandb is True:
+        import wandb
+        from MLR_src.wandb_setup import initialize_wandb, log_system_metrics
+        initialize_wandb('2d-retina-train', {'version':'MLR_2.0_2D_RETINA'})
+
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
-    initialize_wandb('2d-retina-train', {'version':'MLR_2.0_2D_RETINA'})
-
     seen_labels = {}
     components = ['color'] + ['shape'] + ['cropped'] * 2 + ['skip_cropped'] + ['location'] * 2
 
@@ -18,13 +19,14 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, start_epoch = 1
 
         loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components)
 
-        wandb.log({
-        'epoch': epoch,
-        'retinal/training_loss': loss_lst[0],
-        'retinal/test_loss': loss_lst[1],
-        'cropped/training_loss': loss_lst[2],
-        'cropped/test_loss': loss_lst[3]
-        })
+        if use_wandb is True:
+            wandb.log({
+            'epoch': epoch,
+            'retinal/training_loss': loss_lst[0],
+            'retinal/test_loss': loss_lst[1],
+            'cropped/training_loss': loss_lst[2],
+            'cropped/test_loss': loss_lst[3]
+            })
 
         torch.cuda.empty_cache()
         vae.eval()
@@ -34,4 +36,5 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, start_epoch = 1
                     }
         torch.save(checkpoint, f'checkpoints/{checkpoint_folder}/mVAE_checkpoint.pth')
     
-    wandb.finish()
+    if use_wandb is True:
+        wandb.finish()
