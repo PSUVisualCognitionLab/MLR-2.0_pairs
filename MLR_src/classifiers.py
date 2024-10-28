@@ -18,18 +18,20 @@ vals = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E
 #training the shape map on shape labels and color labels
 def classifier_shape_train(vae, whichdecode_use, train_dataset):
     vae.eval()
+    device = next(vae.parameters()).device
     with torch.no_grad():
         data, labels = next(iter(train_dataset))
+        data = data[1]
         train_shapelabels=labels[0].clone()
         train_colorlabels=labels[1].clone()
         print(train_shapelabels[0:10])
         utils.save_image(data[0:10],'train_sample.png')
 
-        data = data.cuda()
+        data = data.to(device)
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape, mu_location, log_var_location,sc,j = vae(data, whichdecode_use)
-        z_shape = vae.sampling(mu_shape, log_var_shape).cuda()
+        z_shape = vae.sampling(mu_shape, log_var_shape).to(device)
         print('training shape bottleneck against color labels sc')
-        clf_sc.fit(z_shape.cpu().numpy(), train_colorlabels)
+        clf_sc.fit(z_shape.cpu().numpy(), train_colorlabels.cpu())
 
         print('training shape bottleneck against shape labels ss')
         clf_ss.fit(z_shape.cpu().numpy(), train_shapelabels)
@@ -37,13 +39,15 @@ def classifier_shape_train(vae, whichdecode_use, train_dataset):
 #testing the shape classifier (one image at a time)
 def classifier_shape_test(vae, whichdecode_use, clf_ss, clf_sc, test_dataset, confusion_mat=0):
     vae.eval()
+    device = next(vae.parameters()).device
     with torch.no_grad():
         data, labels = next(iter(test_dataset))
+        data=data[1]
         test_shapelabels=labels[0].clone()
         test_colorlabels=labels[1].clone()
         data = data.cuda()
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape, mu_location, log_var_location,sc,j = vae(data, whichdecode_use)
-        z_shape = vae.sampling(mu_shape, log_var_shape).cuda()
+        z_shape = vae.sampling(mu_shape, log_var_shape).to(device)
         pred_ss = clf_ss.predict(z_shape.cpu())
         pred_sc = clf_sc.predict(z_shape.cpu())
 
@@ -69,14 +73,16 @@ def classifier_shape_test(vae, whichdecode_use, clf_ss, clf_sc, test_dataset, co
 #training the color map on shape and color labels
 def classifier_color_train(vae, whichdecode_use, train_dataset):
     vae.eval()
+    device = next(vae.parameters()).device
     with torch.no_grad():
         data, labels = next(iter(train_dataset))
+        data = data[1]
         train_shapelabels=labels[0].clone()
         train_colorlabels=labels[1].clone()
         data = data.cuda()
 
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape, mu_location, log_var_location,sc,j = vae(data, whichdecode_use)
-        z_color = vae.sampling(mu_color, log_var_color).cuda()
+        z_color = vae.sampling(mu_color, log_var_color).to(device)
         print('training color bottleneck against color labels cc')
         clf_cc.fit(z_color.cpu().numpy(), train_colorlabels)
 
@@ -86,14 +92,16 @@ def classifier_color_train(vae, whichdecode_use, train_dataset):
 #testing the color classifier (one image at a time)
 def classifier_color_test(vae, whichdecode_use, clf_cc, clf_cs, test_dataset, verbose=0):
     vae.eval()
+    device = next(vae.parameters()).device
     with torch.no_grad():
         data, labels = next(iter(test_dataset))
+        data=data[1]
         test_shapelabels=labels[0].clone()
         test_colorlabels=labels[1].clone()
         data = data.cuda()
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape, mu_location, log_var_location,sc,j = vae(data, whichdecode_use)
 
-        z_color = vae.sampling(mu_color, log_var_color).cuda()
+        z_color = vae.sampling(mu_color, log_var_color).to(device)
         pred_cc = torch.tensor(clf_cc.predict(z_color.cpu()))
         pred_cs = torch.tensor(clf_cs.predict(z_color.cpu()))
 
