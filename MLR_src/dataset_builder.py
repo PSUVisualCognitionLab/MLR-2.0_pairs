@@ -155,6 +155,7 @@ class Dataset(data.Dataset):
             self.name = dataset
             self.train = train
             self.dataset = self._build_dataset(dataset, train)
+            #self.data_source = self
 
         else:
             raise ValueError('invalid dataset input type')
@@ -374,7 +375,7 @@ class Dataset(data.Dataset):
         return transform(image), out_label
 
     def get_loader(self, batch_size):
-        loader = torch.utils.data.DataLoader(dataset=self, batch_size=batch_size, shuffle=True,  drop_last=True)
+        loader = torch.utils.data.DataLoader(dataset=self, batch_size=batch_size, sampler=data.RandomSampler(self), drop_last=True)
         return loader
 
     def all_possible_labels(self):
