@@ -52,7 +52,12 @@ def load_checkpoint(filepath, d=0):
         torch.cuda.set_device(d)
     else:
         device = 'cpu'
-    checkpoint = torch.load(filepath,device, weights_only = True)
+    
+    torch_version = torch.__version__
+    if torch_version == '2.4.0':
+        checkpoint = torch.load(filepath, device, weights_only = True)
+    else:
+        checkpoint = torch.load(filepath, device)
     vae.load_state_dict(checkpoint['state_dict'])
     vae.to(device)
     return vae
