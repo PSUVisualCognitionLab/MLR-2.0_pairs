@@ -57,7 +57,7 @@ def load_checkpoint(filepath, d=0):
     if torch_version == '2.4.0':
         checkpoint = torch.load(filepath, device, weights_only = True)
     else:
-        checkpoint = torch.load(filepath, device)
+        checkpoint = torch.jit.load(filepath, device)
     vae.load_state_dict(checkpoint['state_dict'])
     vae.to(device)
     return vae
