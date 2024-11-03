@@ -8,6 +8,8 @@ parser.add_argument("--cuda", type=bool, default=True, help="Cuda availability")
 parser.add_argument("--folder", type=str, default='test', help="Where to store checkpoints in checkpoints/")
 parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label_net', 'SVM'], help="Which components to train")
 parser.add_argument("--wandb", type=bool, default=False, help="Track training with wandb")
+parser.add_argument("--checkpoint_name", type=str, default='mVAE_checkpoint.pth', help="file name of checkpoint .pth")
+#parser.add_argument("--batch_size", nargs='+', type=int, default=['mVAE', 'label_net', 'SVM'], help="Which components to train")
 args = parser.parse_args()
 
 # prerequisites
@@ -46,11 +48,11 @@ if torch.cuda.is_available():
 else:
     device = 'cpu'
 
-bs=100
+bs=8000
 
 # to resume training an existing model checkpoint, uncomment the following line with the checkpoints filename
 if load is True:
-    vae = load_checkpoint(f'{checkpoint_folder_path}/mVAE_checkpoint.pth', d)
+    vae = load_checkpoint(f'{checkpoint_folder_path}/{args.checkpoint_name}', d)
     print('checkpoint loaded')
 else:
     vae, z_dim = vae_builder()
