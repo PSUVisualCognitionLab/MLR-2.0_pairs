@@ -6,6 +6,7 @@ from torchvision import datasets
 from torchvision import transforms as torch_transforms
 from torch.utils import data #.data import #DataLoader, Subset, Dataset
 import random
+import math
 from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION, ImageDraw
 
 colornames = ["red", "green", "blue", "purple", "yellow", "cyan", "orange", "brown", "pink", "white"]
@@ -147,6 +148,95 @@ def generate_square_crop_image(image_size=(28, 28)):
     image = Image.fromarray(image_array, mode='L')
     
     return image
+
+def generate_offset_line_crop_image(image_size=(28, 28)):
+    """Generate a black image with a white line segment at random angle intervals of 18 degrees"""
+
+    image_array = np.zeros((image_size[0], image_size[1]), dtype=np.uint8)
+    
+    # Line parameters
+    line_length = 20
+    line_width = 2  # Changed from 3 to 2
+    
+    # Calculate center of image
+    center_x = image_size[0] // 2
+    center_y = image_size[1] // 2
+    
+    # Generate random angle from 10 possible angles (0, 18, 36, ..., 162 degrees)
+    angle_step = 18
+    angle_index = random.randint(0, 9)
+    angle_degrees = angle_index * angle_step
+    angle_radians = math.radians(angle_degrees)
+    
+    # Calculate start and end points of the line
+    half_length = line_length // 2
+    x1 = center_x - int(half_length * math.cos(angle_radians))
+    y1 = center_y - int(half_length * math.sin(angle_radians))
+    x2 = center_x + int(half_length * math.cos(angle_radians))
+    y2 = center_y + int(half_length * math.sin(angle_radians))
+    
+    # For 2-pixel width, we'll use just two offset lines (one at -0.5 and one at +0.5)
+    for offset in [-0.5, 0.5]:
+        # Calculate perpendicular offset
+        dx = int(offset * math.cos(angle_radians + math.pi/2))
+        dy = int(offset * math.sin(angle_radians + math.pi/2))
+        
+        # Draw the offset line using Bresenham's algorithm
+        x, y = x1 + dx, y1 + dy
+        x2_offset, y2_offset = x2 + dx, y2 + dy
+        
+        dx = abs(x2_offset - x)
+        dy = abs(y2_offset - y)
+        steep = dy > dx
+        
+        if steep:
+            x, y = y, x
+            x2_offset, y2_offset = y2_offset, x2_offset
+            dx, dy = dy, dx
+            
+        if x > x2_offset:
+            x, x2_offset = x2_offset, x
+            y, y2_offset = y2_offset, y
+            
+        gradient = dy/dx if dx != 0 else 1
+        
+        # Handle first endpoint
+        xend = round(x)
+        yend = y + gradient * (xend - x)
+        xgap = 1 - ((x + 0.5) - int(x + 0.5))
+        xpxl1 = xend
+        ypxl1 = int(yend)
+        
+        if steep:
+            if 0 <= ypxl1 < image_size[0] and 0 <= xpxl1 < image_size[1]:
+                image_array[xpxl1, ypxl1] = 255
+        else:
+            if 0 <= xpxl1 < image_size[0] and 0 <= ypxl1 < image_size[1]:
+                image_array[ypxl1, xpxl1] = 255
+                
+        intery = yend + gradient
+        
+        # Handle second endpoint
+        xend = round(x2_offset)
+        yend = y2_offset + gradient * (xend - x2_offset)
+        xgap = (x2_offset + 0.5) - int(x2_offset + 0.5)
+        xpxl2 = xend
+        ypxl2 = int(yend)
+        
+        # Main line drawing loop
+        for x in range(xpxl1 + 1, xpxl2):
+            if steep:
+                if 0 <= int(intery) < image_size[0] and 0 <= x < image_size[1]:
+                    image_array[x, int(intery)] = 255
+            else:
+                if 0 <= x < image_size[0] and 0 <= int(intery) < image_size[1]:
+                    image_array[int(intery), x] = 255
+            intery += gradient
+    
+    # Convert to PIL Image
+    image = Image.fromarray(image_array, mode='L')
+    
+    return image, angle_degrees
 
 class Dataset(data.Dataset):
     def __init__(self, dataset, transforms={}, train=True):
@@ -291,6 +381,9 @@ class Dataset(data.Dataset):
         
         elif dataset == 'square':
             base_dataset = None
+        
+        elif dataset == 'line':
+            base_dataset = None
 
         elif os.path.exists(dataset):
             base_dataset = Image.open(rf'{dataset}')
@@ -311,9 +404,12 @@ class Dataset(data.Dataset):
             return 10000
 
     def __getitem__(self, index):
-        if self.dataset is None:
+        if self.name == 'square':
             image = generate_square_crop_image()
             target = -1
+        
+        elif self.name == 'line':
+            image, target = generate_offset_line_crop_image()
 
         elif type(self.dataset) != Image.Image:
             image, target = self.dataset[index]
