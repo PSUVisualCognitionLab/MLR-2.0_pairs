@@ -18,6 +18,7 @@ import torch
 import sys
 import os
 import numpy as np
+from collections import defaultdict
 import torch.nn.functional as F
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
@@ -75,7 +76,7 @@ shapeLabel_coeff= 1   #coefficient of the shape label
 colorLabel_coeff = 1  #coefficient of the color label
 location_coeff = 0  #coefficient of the color label
 
-bpsize = 12000#00         #size of the binding pool
+bpsize = 5000#00         #size of the binding pool
 token_overlap =0.3
 bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
@@ -234,7 +235,7 @@ def cd_r_acc_vs_setsize(vae):
                     # store block arrays in BP via L1
                     l1_original = []
                     for n in range(len(original)):
-                        l1_act, l2_act, shape_act, color_act, location_act = activations(original[n].view(frame_count,3,28,28))
+                        l1_act, l2_act, shape_act, color_act, location_act = vae.activations(original[n].view(frame_count,3,28,28))
                         l1_original += [l1_act]
                     #l1_change, l2_act, shape_act, color_act, location_act = activations(change)
                     bp_original_l1 = []
@@ -663,6 +664,250 @@ def cd_jiang_olson_chun_sim(vae):
     ax.set_title('accuracy for location change detection, 50 trials')
     ax.set_ylabel('%')
     plt.savefig('change_detect_accuracy_bar_nodprime.png')
+
+def cd_lines(vae):
+    def compute_dprime(no_change_vector, change_vector):
+        no_change_vector = np.array(no_change_vector)
+        change_vector = np.array(change_vector)
+        
+        # hit rate and false alarm rate
+        hit_rate = np.mean(change_vector)
+        false_alarm_rate = 1 - np.mean(no_change_vector)
+        hit_rate = np.clip(hit_rate, 0.01, 0.99)
+        false_alarm_rate = np.clip(false_alarm_rate, 0.01, 0.99)
+        
+        # z-scores
+        z_hit = stats.norm.ppf(hit_rate)
+        z_fa = stats.norm.ppf(false_alarm_rate)
+        d_prime = z_hit - z_fa
+        
+        return d_prime
+
+    def compute_correlation(x, y):
+        assert x.shape == y.shape, "Tensors must have the same shape"
+        
+        # Flatten tensors if they're multidimensional
+        x = x.view(-1)
+        y = y.view(-1)
+        #x = replace_near_zero(x)
+        #y = replace_near_zero(y)
+        
+        # Compute means
+        x_mean = torch.mean(x)
+        y_mean = torch.mean(y)
+        
+        # Compute the numerator
+        numerator = torch.sum((x - x_mean) * (y - y_mean))
+        
+        # Compute the denominator
+        x_var = torch.sum((x - x_mean)**2)
+        y_var = torch.sum((y - y_mean)**2)
+        denominator = torch.sqrt(x_var * y_var)
+        
+        # Compute correlation
+        correlation = numerator / denominator
+        
+        return correlation
+    
+    def build_partial(input_tensor, n, out_x=1):
+        x, b, channels, height, width = input_tensor.shape
+        output_tensor = torch.zeros(x, channels, height, width, dtype=input_tensor.dtype, device=input_tensor.device)
+
+        for batch_idx in range(x):
+            for img_idx in range(n):
+                #print(batch_idx, img_idx)
+                output_tensor[batch_idx] += input_tensor[batch_idx, img_idx]
+
+        # Clamp the output tensor to the range [0, 1]
+        output_tensor = torch.clamp(output_tensor, min=0.0, max=1.0)
+
+        return output_tensor
+
+    vae.eval()
+    out_r = defaultdict(list)
+    out_dprime = defaultdict(list)
+    threshold = defaultdict(list)
+    out_acc = defaultdict(list)
+    for s in range(0,2):
+        for t in range(0,3):
+            if s == 0:
+                iden = 1
+            else:
+                iden = ''
+            with torch.no_grad():
+                if t == 0: # same color/ diff orientation
+                    frames = torch.load(f'simulation_src/frames_8c{iden}.pth') #.view(-1,3,28,28)
+                    frame_count = 8
+                    name = '8c'
+                elif t == 1: # diff color/ same orientation
+                    frames = torch.load(f'simulation_src/frames_8o{iden}.pth') #.view(-1,3,28,28)
+                    frame_count = 8
+                    name = '8o'
+                else: # diff color/ diff orientation
+                    frames = torch.load(f'simulation_src/frames_4c4o{iden}.pth') #.view(-1,3,28,28)
+                    frame_count = 4
+                    name = '4c4o'
+
+                if s == 0:
+                    frame_count = frame_count//2
+                frame_c =len(frames['original_frames'][0])
+                #frame_count = 1
+                print(frame_count)
+                #print(frames.size())
+                
+                r_lst0 = []
+                r_lst1 = []
+                for b in range(0,2): #20
+                    #print(i,b)
+                    torch.cuda.empty_cache()
+                    samples = 5
+                    batch_id = b*samples
+                    original_frames = frames['original_frames'][batch_id: batch_id+samples].cuda().view(-1,frame_count,3,28,28)
+                    change_frames = frames['change_frames'][batch_id: batch_id+samples].cuda().view(-1,frame_count,3,28,28)
+                    original = build_partial(original_frames, frame_c)
+                    change = build_partial(change_frames, frame_c)
+                    batch_size = samples
+
+                    # store lines arrays in BP via L1 hollistic
+                    #l1_original_frames = []
+                    l1_original = []
+                    '''for n in range(samples):
+                        shape_act, color_act, location_act = vae.activations(original_frames[n].view(frame_count,3,28,28))
+                        l1_act = vae.activations_l1(original_frames[n].view(frame_count,3,28,28))
+                        l1_original_frames += [l1_act]'''
+
+                    # store line arrays in BP compositional
+                    for n in range(samples):
+                        shape_act, color_act, location_act = vae.activations(original[n].view(1,3,28,28))
+                        l1_act = vae.activations_l1(original[n].view(1,3,28,28))
+                        l1_original += [l1_act]
+                        
+                    print(len(l1_original))
+                    # hollistic
+                    bp_original_l1 = []
+                    bp_junk = torch.zeros(frame_count,1).cuda()
+                    for n in range(len(l1_original)):
+                        #print(l1_original[n].size())
+                        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, l1_original[n].view(1,-1), bp_junk, shape_act,color_act,bp_junk,0, 0,0,1,0,1,normalize_fact_novel)
+                        shape_out_all, color_out_all, location_out_all, BP_layer2_out, BP_layerI_original = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, l1_original[0].view(1,-1), bp_junk, shape_act,color_act,bp_junk,1,normalize_fact_novel)
+                        
+                        bp_original_l1 += [BP_layerI_original]
+
+                    # compositional
+                    '''bp_original_frames_l1 = []
+                    bp_junk = torch.zeros(frame_count,1).cuda()
+                    for n in range(batch_size):
+                        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, l1_original_frames[n].view(frame_count,-1), bp_junk, shape_act,color_act,bp_junk,0, 0,0,1,0,frame_count,normalize_fact_novel)
+                        shape_out_all, color_out_all, location_out_all, BP_layer2_out, BP_layerI_original = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, l1_original_frames[0].view(frame_count,-1), bp_junk, shape_act,color_act,bp_junk,frame_count,normalize_fact_novel)
+
+                        bp_original_frames_l1 += [BP_layerI_original]'''
+                    
+                    #decode
+                    original_holistic_BP = []
+                    #original_comp_BP = []
+                    for n in range(batch_size):
+                        recon, mu_color, log_var_color, mu_shape, log_var_shape = vae.forward_layers(bp_original_l1[n].view(1,-1),BP_layer2_out,3, 'skip_cropped')
+                        original_holistic_BP += [recon]
+
+                        #recon = recon, mu_color, log_var_color, mu_shape, log_var_shape = vae.forward_layers(bp_original_frames_l1[n].view(frame_count,-1),BP_layer2_out,3, 'skip_cropped') #vae.decoder_cropped(bp_original_l1[n][0].view(frame_count,-1),bp_original_l1[n][1].view(frame_count,-1),0)
+                        #recon = build_partial(recon.view(1,frame_count,3,28,28), len(recon))
+                        #original_comp_BP += [recon]
+                    
+                        #change_BP, mu_color, log_var_color, mu_shape, log_var_shape = vae.forward_layers(bp_change_l1.view(batch_size,-1),BP_layer2_out,3, 'skip_cropped')
+
+                    #save_image(torch.cat([original[0:4].view(4,3,28,28).cpu(), torch.cat(original_holistic_BP[0:4],0).cpu()],dim=0), f'comp_memory{name}.png', nrow = 4, normalize=False) #, torch.cat(original_comp_BP[0:3],0).cpu()
+                    for j in range(batch_size):
+                        #x, y, z = original[i].cpu().detach().view(1,-1), original_BP[i].cpu().detach().view(1,-1), change_BP[i].cpu().detach().view(1,-1)
+                        x, y, z = original[j].cpu().detach().view(1,-1), original_holistic_BP[j].view(3,28,28).cpu().detach().view(1,-1), change[j].view(3,28,28).cpu().detach().view(1,-1)
+                        r_holistic = compute_correlation(y,x) #cosine_similarity(x,y) # 
+                        r_change = compute_correlation(y,z)#cosine_similarity(x,z) #
+                        
+                        r_lst0 += [r_holistic]
+                        r_lst1 += [r_change]
+                    
+                    
+                    del original
+                    del l1_original 
+                    del shape_act 
+                    del color_act
+                    del location_act
+                    torch.cuda.empty_cache()
+
+                print('computing threshold')
+                correct_predictions = 0
+                total_predictions = len(r_lst0) + len(r_lst1)
+
+                avg_r0 = sum(r_lst0)/(len(r_lst0))
+                avg_r1 = sum(r_lst1)/(len(r_lst1))
+                out_r[t] += [avg_r0.item(), avg_r1.item()]
+                c_threshold = (avg_r0.item() + avg_r1.item())/2
+                no_change_detected = []
+                change_detected = []
+                
+                for l in range(len(r_lst0)):
+                    r_original = r_lst0[l]
+                    r_change = r_lst1[l]
+
+                    if r_original > c_threshold:
+                        no_change_detected += [1]
+                        correct_predictions += 1
+                    else:
+                        no_change_detected += [0]
+
+                    if r_change <= c_threshold:
+                        change_detected += [1]
+                        correct_predictions += 1
+                    else:
+                        change_detected += [0]
+
+                out_dprime[t] += [compute_dprime(no_change_detected, change_detected)]
+                threshold[t] += [c_threshold]
+                out_acc[t] += [correct_predictions/total_predictions]
+
+    print(out_r)
+    print(out_dprime)
+    #torch.save([out_r[0][i][0] for i in range(len(out_r[0]))], 'location_change_detect_r.pth')
+    setsize_range = [4,8]
+    plt.plot(setsize_range, out_dprime[2], label='conjunction')
+    plt.plot(setsize_range, out_dprime[0], label='c')
+    plt.plot(setsize_range, out_dprime[1], label='o')
+    plt.xlabel('num features')
+    plt.ylabel('dprime')
+    plt.legend()
+    plt.title(f'lines change detection, {500} trials')
+    plt.savefig(f'change_detect_lines.png')
+    plt.close()
+
+    plt.plot(setsize_range, out_acc[2], label='conjunction', linewidth=3.5)
+    plt.plot(setsize_range, out_acc[0], label='c', linewidth=3.5)
+    plt.plot(setsize_range, out_acc[1], label='o', linewidth=3.5)
+    plt.xlabel('num features')
+    plt.ylabel('accuracy %')
+    plt.legend()
+    plt.title(f'lines change detection, {500} trials')
+    plt.tick_params(axis='both', labelsize=14)
+    plt.savefig(f'change_detect_lines_acc.png')
+    plt.close()
+
+    '''fig, ax = plt.subplots(figsize=(8, 6))
+
+    # Create x-axis ticks with gaps between pairs
+    x = np.arange(3)
+    bar_width = 0.4
+    gap_width = bar_width/2
+
+    # Plot the bars in pairs
+    ax.bar(x[0], out_dprime[0][0], width=bar_width, label = 'holistic 8c')
+    #ax.bar(x[0] + gap_width, out_r[0][1], width=bar_width, label = 'compositonal 8c')
+    ax.bar(x[1], out_dprime[1][0], width=bar_width, label = 'holistic 8o')
+    #ax.bar(x[1] + gap_width, out_r[1][1], width=bar_width, label = 'compositional 8o')
+    ax.bar(x[2], out_dprime[2][0], width=bar_width, label = 'holistic 4c4o')
+    #ax.bar(x[2] + gap_width, out_r[2][1], width=bar_width, label = 'compositonal 4c4o')
+    ax.set_ylabel('dprime')
+    ax.legend()
+    ax.set_title('dprime by display type, 500 trials')
+    plt.savefig('change_detect_bar.png')
+    plt.close()'''
 
 ######################## Figure 2a #######################################################################################
 #store items using both features, and separately color and shape (memory retrievals)

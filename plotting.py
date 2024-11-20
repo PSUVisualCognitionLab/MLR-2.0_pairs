@@ -1,8 +1,9 @@
-from simulation_src.plots_novel import cd_jiang_olson_chun_sim, cd_r_acc_vs_setsize, fig_loc_compare, load_checkpoint
+from simulation_src.plots_novel import cd_jiang_olson_chun_sim, cd_r_acc_vs_setsize, fig_loc_compare, load_checkpoint, cd_lines
 import torch
 import os
+import matplotlib.pyplot as plt
 
-folder_name = 'test'
+folder_name = 'line'
 
 checkpoint_folder_path = f'checkpoints/{folder_name}/' # the output folder for the trained model versions
 d = 1
@@ -19,4 +20,5 @@ if not os.path.exists('simulations/'):
 if not os.path.exists(simulation_folder_path):
     os.mkdir(simulation_folder_path)
 
-x = fig_loc_compare(vae, simulation_folder_path)
+cd_lines(vae)
+#x = fig_loc_compare(vae, simulation_folder_path)
