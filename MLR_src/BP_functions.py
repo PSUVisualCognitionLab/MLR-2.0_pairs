@@ -261,7 +261,7 @@ def BPTokens_retrieveByToken( bpsize, bpPortion, BP_in_items,tokenBindings, l1_a
     for items in range(bs_testing):  # for each item to be retrieved
         BP_in_items[items, notLink_all[items, :]] = 0  # set the BPs to zero for this token retrieval
         L1_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1),L1_fw.t()).cuda()  # do the actual reconstruction
-        L1_out_all[items,:] = L1_out_eachimg / bpPortion  # put the reconstructions into a big tensor and then normalize by the effective # of BP nodes
+        L1_out_all[items,:] = (L1_out_eachimg / bpPortion) * normalize_fact  # put the reconstructions into a big tensor and then normalize by the effective # of BP nodes
 
         L2_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1),L2_fw.t()).cuda()  # do the actual reconstruction
         L2_out_all[items, :] = L2_out_eachimg / bpPortion  #

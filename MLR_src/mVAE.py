@@ -230,6 +230,21 @@ class VAE_CNN(nn.Module):
         z_location = self.sampling(mu_location, log_var_location)
 
         return z_shape, z_color, z_location
+    
+    def activations_l1(self, x):
+        if type(x) == list or type(x) == tuple:    #passing in a cropped+ location as input
+            l = x[2].cuda()
+            #sc = x[3].cuda()
+            x = x[1].cuda()
+            mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location, mu_scale, log_var_scale, hskip = self.encoder(x, l)
+        else:  #passing in just cropped image
+            x = x.cuda()
+            #sc = torch.zeros(x.size()[0], sc_dim).cuda()
+            l = torch.zeros(x.size()[0], self.l_dim).cuda()
+            mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location, mu_scale, log_var_scale, hskip = self.encoder(x, l)
+        
+        return hskip
+
 
     def location_encoder(self, l):
         return self.sampling_location(self.fc35(l), self.fc36(l))

@@ -34,7 +34,8 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, star
             'state_dict': vae.state_dict(),
             #'labels': seen_labels
                     }
-        torch.save(checkpoint, f'checkpoints/{checkpoint_folder}/mVAE_checkpoint.pth')
+        if epoch % 4 == 0:
+            torch.save(checkpoint, f'checkpoints/{checkpoint_folder}/mVAE_checkpoint.pth')
     
     if use_wandb is True:
         wandb.finish()
