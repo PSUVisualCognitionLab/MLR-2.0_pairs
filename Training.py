@@ -48,7 +48,7 @@ if torch.cuda.is_available():
 else:
     device = 'cpu'
 
-bs=8000
+bs=200
 
 # to resume training an existing model checkpoint, uncomment the following line with the checkpoints filename
 if load is True:
@@ -57,6 +57,7 @@ if load is True:
 else:
     vae, z_dim = vae_builder()
 
+dataset_name = 'line'
 # trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
 mnist_transforms = {'retina':True, 'colorize':True, 'scale':False, 'build_retina':False}
 
@@ -64,10 +65,10 @@ mnist_test_transforms = {'retina':True, 'colorize':True, 'scale':False}
 skip_transforms = {'skip':True, 'colorize':True}
 
 #emnist_dataset = Dataset('emnist', mnist_transforms)
-mnist_dataset = Dataset('mnist', mnist_transforms)
+mnist_dataset = Dataset(dataset_name, mnist_transforms)
 
 #emnist_test_dataset = Dataset('emnist', mnist_test_transforms, train= False)
-mnist_test_dataset = Dataset('mnist', mnist_test_transforms, train= False)
+mnist_test_dataset = Dataset(dataset_name, mnist_test_transforms, train= False)
 
 #blocks
 block_dataset = Dataset('square', {'colorize':True, 'retina':True, 'build_retina':False})
@@ -94,11 +95,11 @@ vae.to(device)
 dataloaders = [train_loader_noSkip, None, mnist_skip, test_loader_noSkip, None, block_loader]
 
 print(f'Training: {args.train_list}')
-
+epoch_count = 500
 #train mVAE
 if 'mVAE' in args.train_list:
     print('Training: mVAE')
-    train_mVAE(dataloaders, vae, 1000, folder_name, args.wandb)
+    train_mVAE(dataloaders, vae, epoch_count, folder_name, args.wandb)
 
 #train_labels
 if 'label_net' in args.train_list:
