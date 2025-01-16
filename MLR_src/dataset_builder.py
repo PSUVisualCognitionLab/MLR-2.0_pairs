@@ -1,3 +1,5 @@
+# current dataset builder
+
 # prerequisites
 import torch
 import os
@@ -238,6 +240,10 @@ def generate_offset_line_crop_image(image_size=(28, 28)):
     
     return image, angle_degrees
 
+# the Dataset class defined below inherits the standard PyTorch data.Dataset class but modifies the __getitem__ method to apply
+# complex transformations on request. the init of the Dataset class handles the necessary multi-transformation logic depending on
+# the transforms input dict. all_possible_labels returns all valid feature combinations given the specified transformations.
+
 class Dataset(data.Dataset):
     def __init__(self, dataset, transforms={}, train=True):
         # initialize base dataset
@@ -343,7 +349,7 @@ class Dataset(data.Dataset):
                 self.indicies, self.indices = self._filter_indices()
                 print('indexing complete')
 
-    def _filter_indices(self):
+    def _filter_indices(self): # manually extracts which samples in emnist are uppercase letters to improve data consistency for training
         base_dataset = datasets.EMNIST(root='./data', split='byclass', train=False, transform=torch_transforms.Compose([lambda img: torch_transforms.functional.rotate(img, -90),
             lambda img: torch_transforms.functional.hflip(img)]), download=True)
         indices_test = []

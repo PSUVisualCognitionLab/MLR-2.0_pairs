@@ -1,3 +1,5 @@
+# outdated dataset builder no longer used
+
 # prerequisites
 import torch
 import os

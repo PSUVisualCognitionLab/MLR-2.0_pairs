@@ -17,30 +17,17 @@
 #-Label networks  akin to SVRHM paper:
 #Hedayati, S., Beaty, R., & Wyble, B. (2021). Seeking the Building Blocks of Visual Imagery and Creativity in a Cognitively Inspired Neural Network. arXiv preprint arXiv:2112.06832.
 
-
-
 # prerequisites
 import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 import random
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
-from torchvision import datasets, transforms, utils
-from torch.autograd import Variable
+from torchvision import utils
 from torchvision.utils import save_image
-from sklearn import svm
-from sklearn.metrics import classification_report, confusion_matrix
 from tqdm import tqdm
-import imageio
-import os
-from torch.utils.data import DataLoader, Subset
 
 from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION
-from joblib import dump, load
-import copy
 
 #torch.set_default_dtype(torch.float64)
 
@@ -61,60 +48,6 @@ def load_checkpoint(filepath, d=0):
     vae.load_state_dict(checkpoint['state_dict'])
     vae.to(device)
     return vae
-
-global colorlabels
-numcolors = 0
-
-colornames = ["red", "blue", "green", "purple", "yellow", "cyan", "orange", "brown", "pink", "white"]
-colorlabels = np.random.randint(0, 10, 1000000)
-colorrange = .1
-colorvals = [
-    [1 - colorrange, colorrange * 1, colorrange * 1],
-    [colorrange * 1, 1 - colorrange, colorrange * 1],
-    [colorrange * 2, colorrange * 2, 1 - colorrange],
-    [1 - colorrange * 2, colorrange * 2, 1 - colorrange * 2],
-    [1 - colorrange, 1 - colorrange, colorrange * 2],
-    [colorrange, 1 - colorrange, 1 - colorrange],
-    [1 - colorrange, .5, colorrange * 2],
-    [.6, .4, .2],
-    [1 - colorrange, 1 - colorrange * 3, 1 - colorrange * 3],
-    [1-colorrange,1-colorrange,1-colorrange]
-]
-
-
-#comment this
-def Colorize_func(img):
-    global numcolors,colorlabels
-
-    thiscolor = colorlabels[numcolors]  # what base color is this?
-
-    rgb = colorvals[thiscolor];  # grab the rgb for this base color
-    numcolors += 1  # increment the index
-
-    r_color = rgb[0] + np.random.uniform() * colorrange * 2 - colorrange  # generate a color randomly in the neighborhood of the base color
-    g_color = rgb[1] + np.random.uniform() * colorrange * 2 - colorrange
-    b_color = rgb[2] + np.random.uniform() * colorrange * 2 - colorrange
-    np_img = np.array(img, dtype=np.uint8)
-    np_img = np.dstack([np_img * r_color, np_img * g_color, np_img * b_color])
-    backup = np_img
-    np_img = np_img.astype(np.uint8)
-    img = Image.fromarray(np_img, 'RGB')
-    return img
-
-#comment
-def Colorize_func_specific(col,img):
-    # col: an int index for which base color is being used
-    rgb = colorvals[col]  # grab the rgb for this base color
-    r_color = rgb[0] + np.random.uniform() * colorrange * 2 - colorrange  # generate a color randomly in the neighborhood of the base color
-    g_color = rgb[1] + np.random.uniform() * colorrange * 2 - colorrange
-    b_color = rgb[2] + np.random.uniform() * colorrange * 2 - colorrange
-    np_img = np.array(img, dtype=np.uint8)
-    np_img = np.dstack([np_img * r_color, np_img * g_color, np_img * b_color])
-    backup = np_img
-    np_img = np_img.astype(np.uint8)
-    img = Image.fromarray(np_img, 'RGB')
-
-    return img
 
 # model training data set and dimensions
 data_set_flag = 'padded_mnist_3rd' # mnist, cifar10, padded_mnist, padded_cifar10
@@ -149,9 +82,9 @@ class VAE_CNN(nn.Module):
         self.bn3 = nn.BatchNorm2d(64)
         self.conv4 = nn.Conv2d(64, 16, kernel_size=3, stride=2, padding=1, bias=False)
         self.bn4 = nn.BatchNorm2d(16)
+        self.fc2 = nn.Linear(int(imgsize / 4) * int(imgsize / 4)*16, h_dim2)
+        self.fc_bn2 = nn.BatchNorm1d(h_dim2)
 
-        self.fc2 = nn.Linear(int(imgsize / 4) * int(imgsize / 4)*16, h_dim2) #
-        self.fc_bn2 = nn.BatchNorm1d(h_dim2) # remove
         # bottle neck part  # Latent vectors mu and sigma
         self.fc31 = nn.Linear(h_dim2, z_dim)  # shape
         self.fc32 = nn.Linear(h_dim2, z_dim)
@@ -168,10 +101,7 @@ class VAE_CNN(nn.Module):
         self.fc4sc = nn.Linear(z_dim, sc_dim)  # scale
 
         self.fc5 = nn.Linear(h_dim2, int(imgsize/4) * int(imgsize/4) * 16)
-        #self.fc8 = nn.Linear(32*14*14,32*14*14)#16*28*28,16*28*28) #skip conection to hidden dim
-        #self.fc9 = nn.Linear(32*14*14,32*14*14)
-        self.fc8 = nn.Linear(16*28*28,16*28*28)# #skip conection to hidden dim
-        #self.fc9 = nn.Linear(16*28*28,16*28*28)
+        self.fc8 = nn.Linear(16*28*28,16*28*28) #skip conection
 
         self.conv5 = nn.ConvTranspose2d(16, 64, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False)
         self.bn5 = nn.BatchNorm2d(64)
@@ -184,6 +114,7 @@ class VAE_CNN(nn.Module):
 
         self.skip_bn = nn.BatchNorm2d(16)
 
+        # retinal decoder
         # combine recon and location into retina now using fcs 2dconv and recurrence
         self.fc6 = nn.Linear((imgsize*imgsize*3)+zl_dim, 4000)
         self.fc65 = nn.Linear(4000,4000)#recurrence layer
@@ -192,9 +123,7 @@ class VAE_CNN(nn.Module):
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax()
         self.dropout = nn.Dropout(0.1)
-        #self.layernorm = nn.LayerNorm(32*14*14)
         self.sparse_relu = nn.Threshold(threshold=0.5, value=0)
-        #self.skipconv = nn.Conv2d(16,16,kernel_size=1,stride=1,padding =0,bias=False)
 
         # map scalars
         self.shape_scale = 1 #1.9
@@ -213,7 +142,7 @@ class VAE_CNN(nn.Module):
 
         return self.fc31(h), self.fc32(h), self.fc33(h), self.fc34(h), self.fc35(l), self.fc36(l), 0, 0, hskip # mu, log_var
 
-    def activations(self, x):
+    def activations(self, x): # returns shape, color, location latent activations
         if type(x) == list or type(x) == tuple:    #passing in a cropped+ location as input
             l = x[2].cuda()
             #sc = x[3].cuda()
@@ -231,7 +160,7 @@ class VAE_CNN(nn.Module):
 
         return z_shape, z_color, z_location
     
-    def activations_l1(self, x):
+    def activations_l1(self, x): # returns skip connection activations
         if type(x) == list or type(x) == tuple:    #passing in a cropped+ location as input
             l = x[2].cuda()
             #sc = x[3].cuda()
@@ -244,7 +173,6 @@ class VAE_CNN(nn.Module):
             mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location, mu_scale, log_var_scale, hskip = self.encoder(x, l)
         
         return hskip
-
 
     def location_encoder(self, l):
         return self.sampling_location(self.fc35(l), self.fc36(l))
@@ -287,26 +215,13 @@ class VAE_CNN(nn.Module):
         crop_out = h.clone()
         # location vector recon
         l = z_location.detach() #cont. repr of location
-        #l = l.view(-1,1,1,self.z_dim)
         l = torch.sigmoid(l)
-        #l = l.expand(-1, 3, imgsize, self.z_dim) # reshape to concat
-        # shape vector
-        #sc = z_scale.detach() #cont. repr of scale
-        #sc = sc.view(-1,1,1,self.z_dim)
-        #sc = torch.sigmoid(sc)
-        #sc = sc.expand(-1, 3, imgsize, self.z_dim) # reshape to concat
-        # combine into retina
         h = h.view(b_dim,-1)
         h = torch.cat([h,l], dim = 1)
         h = self.relu(self.fc6(h))
-        #print(h.size())
         h = self.relu(self.fc65(h))
-
         h = self.relu(self.fc65(h))
-        
         h = self.fc7(h)
-        #print(h.size())
-        #print(h.size())
         h = h.view(-1, 3, retina_size, retina_size)
 
         if self.training:
@@ -481,7 +396,7 @@ class VAE_CNN(nn.Module):
             l = torch.zeros(x.size()[0], self.l_dim).cuda()
             mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location, mu_scale, log_var_scale, hskip = self.encoder(x, l)
 
-        #what maps are used in the training process.. the others are detached to zero out those gradients
+        # the maps that are used in the training process.. the others are detached to zero out those gradients
         if ('shape' in keepgrad):
             z_shape = self.sampling(mu_shape, log_var_shape)
         else:
@@ -520,27 +435,15 @@ class VAE_CNN(nn.Module):
             output = self.decoder_scale(0, 0, 0, z_scale=0)
         return output, mu_color, log_var_color, mu_shape, log_var_shape, mu_location, log_var_location, mu_scale, log_var_scale
 
-# function to build an  actual model instance
 # function to build a model instance
 def vae_builder(vae_type = vae_type_flag, x_dim = x_dim, h_dim1 = h_dim1, h_dim2 = h_dim2, z_dim = z_dim, l_dim = l_dim, sc_dim = sc_dim):
     vae = VAE_CNN(x_dim, h_dim1, h_dim2, z_dim, l_dim, sc_dim)
 
-    folder_path = f'sample_{vae_type}_{data_set_flag}'
-
     return vae, z_dim
-
-########Actually build it
-#vae, z_dim = vae_builder()
-
-#######what optimier to use:
-# learning rate = 0.0001
-#optimizer = torch.optim.SGD(vae.parameters(), lr=0.0001, momentum = 0.9)
-#optimizer = optim.Adam(vae.parameters(), lr=0.0001)
-#device = torch.device('cuda:3')
 
 
 ######the loss functions
-#Pixelwise loss for the entire retina (dimensions are cropped image height x retina_size)
+#pixelwise loss for the entire retina (dimensions are cropped image height x retina_size)
 def loss_function(recon_x, x, crop_x, mu, log_var, mu_c, log_var_c):
     if crop_x is not None:
         x = place_crop(crop_x,x[2].clone())
@@ -827,6 +730,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         return [retinal_loss_train, test_loss_dict['retinal'], cropped_loss_train, test_loss_dict['cropped']], seen_labels
 
 #compute avg loss of retinal recon w/ skip, w/o skip, increase fc?
+# no longer used
 def test(whichdecode, test_loader_noSkip, test_loader_skip, bs):
     vae.eval()
     global numcolors
@@ -879,43 +783,3 @@ def test(whichdecode, test_loader_noSkip, test_loader_skip, bs):
 
     test_loss /= len(test_loader_noSkip.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss))
-
-'''def activations(image, l= None):
-    if l is None:
-        l = torch.zeros(image.size()[0], vae.l_dim).cuda()
-    mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location,j,j, hskip = vae.encoder(image, l)
-    l1_act = hskip
-    l2_act = hskip
-    shape_act = vae.sampling(mu_shape, log_var_shape)
-    color_act = vae.sampling(mu_color, log_var_color)
-    location_act = vae.sampling_location(mu_location, log_var_location)
-    return l1_act , l2_act, shape_act, color_act, location_act#.view(-1,16,28,28)
-
-def image_activations(image, l = None):
-    if l is None:
-        l = torch.zeros(image.size()[0], vae.l_dim).cuda()
-    mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location, a,b, hskip = vae.encoder(image, l)
-    shape_act = vae.sampling(mu_shape, log_var_shape)
-    color_act = vae.sampling(mu_color, log_var_color)
-    location_act = vae.sampling_location(mu_location, log_var_location)
-    return shape_act, color_act, location_act
-
-def activation_fromBP(L1_activationBP, L2_activationBP, layernum):
-    if layernum == 1:
-        l2_act_bp = F.relu(vae.fc2(L1_activationBP))
-        mu_shape = (vae.fc31(l2_act_bp))
-        log_var_shape = (vae.fc32(l2_act_bp))
-        mu_color = (vae.fc33(l2_act_bp))
-        log_var_color = (vae.fc34(l2_act_bp))
-        shape_act_bp = vae.sampling(mu_shape, log_var_shape)
-        color_act_bp = vae.sampling(mu_color, log_var_color)
-    elif layernum == 2:
-        mu_shape = (vae.fc31(L2_activationBP))
-        log_var_shape = (vae.fc32(L2_activationBP))
-        mu_color = (vae.fc33(L2_activationBP))
-        log_var_color = (vae.fc34(L2_activationBP))
-        shape_act_bp = vae.sampling(mu_shape, log_var_shape)
-        color_act_bp = vae.sampling(mu_color, log_var_color)
-    return shape_act_bp, color_act_bp'''
-
-
