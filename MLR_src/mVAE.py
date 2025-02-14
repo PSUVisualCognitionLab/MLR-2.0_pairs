@@ -116,9 +116,29 @@ class VAE_CNN(nn.Module):
 
         # retinal decoder
         # combine recon and location into retina now using fcs 2dconv and recurrence
-        self.fc6 = nn.Linear((imgsize*imgsize*3)+zl_dim, 4000)
-        self.fc65 = nn.Linear(4000,4000)#recurrence layer
-        self.fc7 = nn.Linear(4000, (retina_size**2)*3)
+        #self.fc6 = nn.Linear((imgsize*imgsize*3)+zl_dim, 4000)
+        #self.fc65 = nn.Linear(4000,4000)#recurrence layer
+        #self.fc7 = nn.Linear(4000, (retina_size**2)*3)
+
+        self.localization = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 16, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.Linear(int(retina_size / 4) * int(retina_size / 4)*16, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 3 * 2),
+        )
 
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax()
@@ -128,6 +148,25 @@ class VAE_CNN(nn.Module):
         # map scalars
         self.shape_scale = 1 #1.9
         self.color_scale = 1 #2
+
+    def stn_encode(self, x): # returns transform invariant crop, theta
+        theta = self.localization(x) # get transformation rep
+        theta = theta.view(-1, 2, 3)
+
+        grid = F.affine_grid(theta, x.size()) # undo transformation
+        crop = F.grid_sample(x, grid)
+
+        return crop
+
+
+    def stn_decode(self, crop, theta, x): # returns transformed retinal reconstruction
+        inv_theta = torch.inverse(theta)
+
+        grid = F.affine_grid(inv_theta, x.size()) # apply transformation
+        retina = F.grid_sample(crop, grid)
+
+        return retina
+
 
     def encoder(self, x, l):
         b_dim = x.size(0)
