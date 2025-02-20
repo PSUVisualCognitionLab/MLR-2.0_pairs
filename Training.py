@@ -59,7 +59,7 @@ else:
 
 dataset_name = 'line'
 # trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
-mnist_transforms = {'retina':True, 'colorize':True, 'scale':False, 'build_retina':False}
+mnist_transforms = {'retina':True, 'colorize':True, 'scale':False}
 
 mnist_test_transforms = {'retina':True, 'colorize':True, 'scale':False}
 skip_transforms = {'skip':True, 'colorize':True}

@@ -7,15 +7,15 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, star
     if use_wandb is True:
         import wandb
         from MLR_src.wandb_setup import initialize_wandb, log_system_metrics
-        initialize_wandb('2d-retina-train', {'version':'MLR_2.0_2D_RETINA'})
+        initialize_wandb('2d-retina-train', {'version':'MLR_2.0_2D_RETINA_STN'})
 
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     seen_labels = {}
-    components = ['color'] + ['shape'] + ['cropped'] * 2 + ['skip_cropped'] + ['location'] * 2
+    components = ['color'] + ['shape'] + ['cropped'] * 2 + ['skip_cropped']
 
     for epoch in range(start_epoch, epoch_count):
         if epoch >= 120:
-            components = ['location', 'retinal', 'retinal']
+            components = ['retinal']
 
         loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components)
 
