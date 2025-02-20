@@ -29,10 +29,11 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, star
             })
 
         torch.cuda.empty_cache()
+        
         vae.eval()
         checkpoint =  {
             'state_dict': vae.state_dict(),
-            #'labels': seen_labels
+            'labels': seen_labels
                     }
         if epoch % 4 == 0:
             torch.save(checkpoint, f'checkpoints/{checkpoint_folder}/mVAE_checkpoint.pth')

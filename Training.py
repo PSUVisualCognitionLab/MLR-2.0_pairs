@@ -73,10 +73,11 @@ mnist_test_dataset = Dataset(dataset_name, mnist_test_transforms, train= False)
 #blocks
 block_dataset = Dataset('square', {'colorize':True, 'retina':True, 'build_retina':False})
 block_loader = block_dataset.get_loader(bs)
+
 #blocks, labels = next(iter(block_loader))
 #utils.save_image( blocks,
- #           'testblock.png',
-  #          nrow=1, normalize=False)
+#           'testblock.png',
+#          nrow=1, normalize=False)
 
 
 #emnist_skip = Dataset('emnist', skip_transforms)
