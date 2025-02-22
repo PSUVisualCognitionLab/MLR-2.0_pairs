@@ -6,7 +6,7 @@ import time
 import torch
 from mVAE import place_crop
 
-transform = {'retina':True, 'colorize':True, 'scale':False, 'location_targets':{'left':[0,1,2,3], 'right':[4,5,6,7]}, 'color_targets':{4:[4,3,7], 1:[8,1], 2:[5,6]}}
+transform = {'retina':True, 'colorize':True, 'scale':True}#, 'location_targets':{'left':[0,1,2,3], 'right':[4,5,6,7]}, 'color_targets':{4:[4,3,7], 1:[8,1], 2:[5,6]}}
 train_data = Dataset('mnist', transform)
 data_ranges = train_data.all_possible_labels()
 #print(data_ranges)

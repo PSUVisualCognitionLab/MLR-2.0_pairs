@@ -68,7 +68,7 @@ class Translate:
 
     def __call__(self, img):
         if self.scale == 0:
-            scale_val = (random.random()*4)
+            scale_val = (random.random()*2) + 3
             scale_dist = torch.zeros(10)
             scale_dist[int(scale_val)] = 1
             width = int(self.min_width + (self.max_width - self.min_width) * (scale_val / 10))
@@ -314,11 +314,12 @@ class Dataset(data.Dataset):
         if 'scale' in transforms:
             self.scale = transforms['scale']
 
-            if self.scale == True and 'scale_targets' in transforms:
+            if self.scale == True:
                 self.scale_dict = {}
-                for scale in transforms['scale_targets']:
-                    for target in transforms['scale_targets'][scale]:
-                        self.scale_dict[target] = scale
+                if 'scale_targets' in transforms:
+                    for scale in transforms['scale_targets']:
+                        for target in transforms['scale_targets'][scale]:
+                            self.scale_dict[target] = scale
 
         else:
             self.scale = False

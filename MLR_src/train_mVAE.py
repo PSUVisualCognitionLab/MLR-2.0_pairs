@@ -11,11 +11,11 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, star
 
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     seen_labels = {}
-    components = ['color'] + ['shape'] + ['cropped'] * 2 + ['skip_cropped']
+    components = ['color'] + ['shape'] + ['cropped'] * 2 + ['skip_cropped'] + ['retinal']
 
     for epoch in range(start_epoch, epoch_count):
         if epoch >= 120:
-            components = ['retinal']
+            components = ['color'] + ['shape'] + ['cropped'] + ['skip_cropped'] + ['retinal']
 
         loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components)
 

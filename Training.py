@@ -9,6 +9,7 @@ parser.add_argument("--folder", type=str, default='test', help="Where to store c
 parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label_net', 'SVM'], help="Which components to train")
 parser.add_argument("--wandb", type=bool, default=False, help="Track training with wandb")
 parser.add_argument("--checkpoint_name", type=str, default='mVAE_checkpoint.pth', help="file name of checkpoint .pth")
+parser.add_argument("--start_ep", type=int, default=1, help="what epoch to resume training")
 #parser.add_argument("--batch_size", nargs='+', type=int, default=['mVAE', 'label_net', 'SVM'], help="Which components to train")
 args = parser.parse_args()
 
@@ -47,6 +48,7 @@ if torch.cuda.is_available():
     print('CUDA')
 else:
     device = 'cpu'
+    print('CUDA not available')
 
 bs=200
 
@@ -57,9 +59,9 @@ if load is True:
 else:
     vae, z_dim = vae_builder()
 
-dataset_name = 'line'
+dataset_name = 'mnist'
 # trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
-mnist_transforms = {'retina':True, 'colorize':True, 'scale':False}
+mnist_transforms = {'retina':True, 'colorize':True, 'scale':True}
 
 mnist_test_transforms = {'retina':True, 'colorize':True, 'scale':False}
 skip_transforms = {'skip':True, 'colorize':True}
@@ -96,11 +98,11 @@ vae.to(device)
 dataloaders = [train_loader_noSkip, None, mnist_skip, test_loader_noSkip, None, block_loader]
 
 print(f'Training: {args.train_list}')
-epoch_count = 500
+epoch_count = 600
 #train mVAE
 if 'mVAE' in args.train_list:
     print('Training: mVAE')
-    train_mVAE(dataloaders, vae, epoch_count, folder_name, args.wandb)
+    train_mVAE(dataloaders, vae, epoch_count, folder_name, args.wandb, args.start_ep)
 
 #train_labels
 if 'label_net' in args.train_list:
