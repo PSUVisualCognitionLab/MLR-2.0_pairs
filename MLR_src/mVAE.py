@@ -753,17 +753,14 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         elif whichdecode_use == 'color': # color
             loss = loss_function_color(recon_batch, data, mu_color, log_var_color)
 
-        #elif whichdecode_use == 'location': # location
-            #loss = loss_function_location(recon_batch, data, mu_location, log_var_location)
-
         elif whichdecode_use == 'retinal': # retinal
-            loss = loss_function(recon_batch['recon'], data, recon_batch['crop'])
-            #loss = loss_function(recon_batch['recon'], data, None)
+            #loss = loss_function(recon_batch['recon'], data, recon_batch['crop'])
+            loss = loss_function(recon_batch['recon'], data, None)
             retinal_loss_train = loss.item()
             if count >= 270:
                 utils.save_image(
                     torch.cat([data[0].view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
-                               ,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
+                               #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
                                ], 0),
                     "retinal_recon_test.png",
                     nrow=25, normalize=False)
