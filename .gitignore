@@ -11,3 +11,7 @@
 .outputFile
 *.png
 *.pyc
+MLR_src/data/
+MLR_src/data/cifar-10-batches-py/
+*.tar.gz
+*.bin
