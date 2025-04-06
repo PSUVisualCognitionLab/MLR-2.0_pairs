@@ -23,6 +23,7 @@ from MLR_src.train_mVAE import train_mVAE
 from MLR_src.train_labels import train_labelnet
 from MLR_src.train_classifiers import train_classifiers
 from torchvision import datasets, transforms, utils
+import torch.nn as nn
 
 folder_name = args.folder
 #torch.set_default_dtype(torch.float64)
@@ -50,7 +51,7 @@ else:
     device = 'cpu'
     print('CUDA not available')
 
-bs=200
+bs=100
 
 # to resume training an existing model checkpoint, uncomment the following line with the checkpoints filename
 if load is True:
@@ -59,15 +60,18 @@ if load is True:
 else:
     vae, z_dim = vae_builder()
 
-dataset_name = 'mnist'
-# trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
-mnist_transforms = {'retina':True, 'colorize':True, 'scale':True}
+#vae = nn.DataParallel(vae)
 
-mnist_test_transforms = {'retina':True, 'colorize':True, 'scale':False}
+dataset_name = 'cifar10'
+# trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
+mnist_transforms = {'retina':True, 'colorize':False, 'scale':True} #colorize false for cifar
+
+mnist_test_transforms = {'retina':True, 'colorize':True, 'scale':True}
 skip_transforms = {'skip':True, 'colorize':True}
 
 #emnist_dataset = Dataset('emnist', mnist_transforms)
-mnist_dataset = Dataset(dataset_name, mnist_transforms)
+mnist_dataset = Dataset('mnist', mnist_test_transforms)
+emnist_dataset = Dataset(dataset_name, mnist_transforms) #emnist
 
 #emnist_test_dataset = Dataset('emnist', mnist_test_transforms, train= False)
 mnist_test_dataset = Dataset(dataset_name, mnist_test_transforms, train= False)
@@ -85,8 +89,9 @@ block_loader = block_dataset.get_loader(bs)
 #emnist_skip = Dataset('emnist', skip_transforms)
 mnist_skip = Dataset('mnist', skip_transforms)
 
+train_loader_noSkip = torch.utils.data.DataLoader(dataset=ConcatDataset([mnist_dataset, emnist_dataset, emnist_dataset]), batch_size=bs, shuffle=True,  drop_last= True)
 #concat datasets and init dataloaders
-train_loader_noSkip = mnist_dataset.get_loader(bs)
+#train_loader_noSkip = mnist_dataset.get_loader(bs)
 #sample_loader_noSkip = mnist_dataset.get_loader(25)
 test_loader_noSkip = mnist_test_dataset.get_loader(bs)
 #mnist_skip = torch.utils.data.DataLoader(dataset=ConcatDataset([block_dataset, mnist_skip]), batch_size=bs, shuffle=True,  drop_last= True)
@@ -98,7 +103,7 @@ vae.to(device)
 dataloaders = [train_loader_noSkip, None, mnist_skip, test_loader_noSkip, None, block_loader]
 
 print(f'Training: {args.train_list}')
-epoch_count = 600
+epoch_count = 140
 #train mVAE
 if 'mVAE' in args.train_list:
     print('Training: mVAE')

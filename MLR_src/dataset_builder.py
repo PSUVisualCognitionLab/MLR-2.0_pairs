@@ -440,6 +440,8 @@ class Dataset(data.Dataset):
             else:
                 col = random.randint(0,9) # any
                 transform_list += [Colorize_specific(col)]
+        elif self.name == 'cifar10':
+            col = -1
         else:
             col = -1
             transform_list += [self.no_color_3dim]
@@ -447,6 +449,10 @@ class Dataset(data.Dataset):
         # skip connection dataset
         if self.skip == True:
             transform_list += [torch_transforms.RandomRotation(90), torch_transforms.RandomCrop(size=28, padding= 8)]
+        
+        if self.name == 'cifar10':
+            resize = torch_transforms.Resize((28, 28))
+            image =  resize(image)# resize 32,32 -> 28,28
 
         # retina
         if self.retina == True:

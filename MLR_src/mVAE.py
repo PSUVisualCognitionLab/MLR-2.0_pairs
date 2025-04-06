@@ -57,8 +57,8 @@ retina_size = 64 # by default should be same size as image
 vae_type_flag = 'CNN' # must be CNN or FC
 x_dim = retina_size * retina_size * 3
 h_dim1 = 256
-h_dim2 = 128
-z_dim = 8
+h_dim2 = 200 #128
+z_dim = 128
 l_dim = 64*2 # 2dim (2, retina_size) position
 zl_dim = z_dim
 sc_dim = 10
@@ -91,15 +91,10 @@ class VAE_CNN(nn.Module):
         self.fc32 = nn.Linear(h_dim2, z_dim)
         self.fc33 = nn.Linear(h_dim2, z_dim)  # color
         self.fc34 = nn.Linear(h_dim2, z_dim)
-        self.fc35 = nn.Linear(l_dim, zl_dim)  # location
-        self.fc36 = nn.Linear(l_dim, zl_dim)
-        self.fc37 = nn.Linear(sc_dim, z_dim)  # scale
-        self.fc38 = nn.Linear(sc_dim, z_dim)
+
         # decoder part
         self.fc4s = nn.Linear(z_dim, h_dim2)  # shape
         self.fc4c = nn.Linear(z_dim, h_dim2)  # color
-        self.fc4l = nn.Linear(zl_dim, l_dim)  # location
-        self.fc4sc = nn.Linear(z_dim, sc_dim)  # scale
 
         self.fc5 = nn.Linear(h_dim2, int(imgsize/4) * int(imgsize/4) * 16)
         self.fc8 = nn.Linear(16*28*28,16*28*28) #skip conection
@@ -115,12 +110,7 @@ class VAE_CNN(nn.Module):
 
         self.skip_bn = nn.BatchNorm2d(16)
 
-        # retinal decoder
-        # combine recon and location into retina now using fcs 2dconv and recurrence
-        #self.fc6 = nn.Linear((imgsize*imgsize*3)+zl_dim, 4000)
-        #self.fc65 = nn.Linear(4000,4000)#recurrence layer
-        #self.fc7 = nn.Linear(4000, (retina_size**2)*3)
-
+        # localization network for stn
         self.localization = nn.Sequential(
             nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False),
             nn.GroupNorm(4,16),
@@ -134,10 +124,9 @@ class VAE_CNN(nn.Module):
         self.regressor = nn.Sequential(
             nn.Linear(int(retina_size / 4) * int(retina_size / 4)*16, 32),
             nn.ReLU(),
-            nn.Linear(32, 3),
+            nn.Linear(32, 4), # 3
         )
 
-        self.fcout = nn.Linear(3*64*64,3*64*64)
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax()
         self.dropout = nn.Dropout(0.1)
@@ -145,17 +134,17 @@ class VAE_CNN(nn.Module):
 
         # map scalars
         self.shape_scale = 1 #1.9
-        self.color_scale = 1 #2
+        self.color_scale = 0 #2
 
     def construct_theta(self, z_where):
-        # Take a batch of three-vectors, and massages them into a batch of
-        # 2x3 matrices with elements like so:
-        # [s,x,y] -> [[s,0,x],
+        # [s,x,y,r] -> [[s,0,x],
         #             [0,s,y]]
         n = z_where.size(0)
         out = torch.zeros(n, 2, 3).to(z_where.device)
         out[:,0,0] = z_where[:,0]
+        #out[:,0,1] = z_where[:,3] #
         out[:,0,2] = z_where[:,1]
+        #out[:,1,0] = z_where[:,3] #
         out[:,1,1] = z_where[:,0]
         out[:,1,2] = z_where[:,2]
         out = out.view(n, 2, 3)
@@ -163,15 +152,11 @@ class VAE_CNN(nn.Module):
         return out
 
     def invert_theta(self, z_where):
-        # Take a batch of z_where vectors, and compute their "inverse".
-        # That is, for each row compute:
-        # [s,x,y] -> [1/s,-x/s,-y/s]
-        # These are the parameters required to perform the inverse of the
-        # spatial transform performed in the generative model.
+        # [s,x,y,r] -> [1/s,-x/s,-y/s,-r]
         n = z_where.size(0)
-        out = torch.cat((z_where.new_ones(n, 1), -z_where[:, 1:]), 1)
-        # Divide all entries by the scale.
-        out = out / z_where[:, 0:1].to(z_where.device)
+        out = torch.cat((z_where.new_ones(n, 1), -z_where[:, 1:3]), 1)  # Invert translation
+        out = out / z_where[:, 0:1]  # Divide by scale
+        out = torch.cat((out, -z_where[:, 3:4]), 1)  # Invert rotation
         return out
 
     def stn_encode(self, x):
@@ -179,7 +164,7 @@ class VAE_CNN(nn.Module):
         # x is [B, 3, 64, 64]
         z=self.localization(x)
         theta = self.regressor(z.view(-1, int(retina_size / 4) * int(retina_size / 4)*16))  # [B, 2, 3]
-        theta = theta.view(-1, 3).to(x.device)
+        theta = theta.view(-1, 4).to(x.device)
         grid = F.affine_grid(self.construct_theta(theta), (B,3,64,64), align_corners=False)  # same 64×64 resolution
         x_transformed = F.grid_sample(x, grid, align_corners=False)
 
@@ -192,7 +177,8 @@ class VAE_CNN(nn.Module):
 
         # put the 28×28 crop back into a 64×64 retina
         canvas = torch.zeros(B, 3, 64, 64, device=crop.device)
-        canvas[:, :, 18:46, 18:46] = crop  # place the 28×28 patch back
+        #canvas[:, :, 18:46, 18:46] = crop  # place the 28×28 patch back
+        canvas[:, :, 18:46, 18:46] = torch.rot90(crop, k=2, dims=(-2, -1))
         theta = self.invert_theta(theta)
         theta = self.construct_theta(theta).to(crop.device)
         
@@ -201,6 +187,14 @@ class VAE_CNN(nn.Module):
         retina = F.grid_sample(canvas, grid, align_corners=False)
 
         return retina
+    
+    def encode_retina(self, retina):
+        x, theta = self.stn_encode(retina)
+        mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
+        z_shape = self.sampling(mu_shape, log_var_shape)
+        z_color = self.sampling(mu_color, log_var_color)
+
+        return z_shape, z_color, theta
     
     def encoder(self, x):
         b_dim = x.size(0)
@@ -219,18 +213,17 @@ class VAE_CNN(nn.Module):
             l = x[2].cuda()
             #sc = x[3].cuda()
             x = x[1].cuda()
-            mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location, mu_scale, log_var_scale, hskip = self.encoder(x, l)
+            mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x, l)
         else:  #passing in just cropped image
             x = x.cuda()
             #sc = torch.zeros(x.size()[0], sc_dim).cuda()
             l = torch.zeros(x.size()[0], self.l_dim).cuda()
-            mu_shape, log_var_shape, mu_color, log_var_color, mu_location, log_var_location, mu_scale, log_var_scale, hskip = self.encoder(x, l)
+            mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x, l)
         
         z_shape = self.sampling(mu_shape, log_var_shape)
         z_color = self.sampling(mu_color, log_var_color)
-        z_location = self.sampling(mu_location, log_var_location)
 
-        return z_shape, z_color, z_location
+        return z_shape, z_color
     
     def activations_l1(self, x): # returns skip connection activations
         if type(x) == list or type(x) == tuple:    #passing in a cropped+ location as input
@@ -283,20 +276,11 @@ class VAE_CNN(nn.Module):
         h = self.conv8(h).detach().view(-1, 3, imgsize, imgsize) #detach conv
         h = torch.sigmoid(h)
         crop_out = h.clone()
-        # location vector recon
-        """l = z_location.detach() #cont. repr of location
-        l = torch.sigmoid(l)
-        h = h.view(b_dim,-1)
-        h = torch.cat([h,l], dim = 1)
-        h = self.relu(self.fc6(h))
-        h = self.relu(self.fc65(h))
-        h = self.relu(self.fc65(h))
-        h = self.fc7(h)
-        h = h.view(-1, 3, retina_size, retina_size)"""
+        
         h = self.stn_decode(h, theta)
 
         if self.training:
-            return {'recon':h, 'crop':crop_out}
+            return {'recon':h}
         else:
             return h
 
@@ -456,9 +440,10 @@ class VAE_CNN(nn.Module):
         return output, mu_color, log_var_color, mu_shape, log_var_shape
 
     def forward(self, x, whichdecode='noskip', keepgrad=[]):
-        if type(x) == list or type(x) == tuple:    #passing in a cropped+ location as input
-            x = x[0].cuda()
-            x, theta = self.stn_encode(x)
+        if type(x) == list or type(x) == tuple:    #passing in full retina
+            xx = x[0].cuda()
+            xx, theta = self.stn_encode(xx)
+            x = x[1].cuda()
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
         else:  #passing in just cropped image
             x = x.cuda()
@@ -484,7 +469,6 @@ class VAE_CNN(nn.Module):
             output = self.decoder_cropped(z_shape,z_color, 0, hskip)
         elif (whichdecode == 'retinal'):
             output = self.decoder_retinal(z_shape,z_color, theta)
-            #output = self.stn_decode(x, theta)
         elif (whichdecode == 'skip_cropped'):
             output = self.decoder_skip_cropped(0, 0, 0, hskip)
         elif (whichdecode == 'skip_retinal'):
@@ -727,7 +711,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
 
         # shuffle in the block dataset
         z = random.randint(0,10)
-        if z <= 1:
+        if z < 0:
             data = block_data
         
         optimizer.zero_grad()
@@ -745,7 +729,12 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             else:
                 data = data[1]
         
-        recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use, keepgrad)
+        if  whichdecode_use == 'cropped' and 'retinal' not in components:
+            data_in = data[1]
+        else:
+            data_in = data
+        
+        recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data_in, whichdecode_use, keepgrad)
             
         if whichdecode_use == 'shape':  # shape
             loss = loss_function_shape(recon_batch, data, mu_shape, log_var_shape)
@@ -757,17 +746,24 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             #loss = loss_function(recon_batch['recon'], data, recon_batch['crop'])
             loss = loss_function(recon_batch['recon'], data, None)
             retinal_loss_train = loss.item()
-            if count >= 270:
+            if count >= 0.1*max_iter:
                 utils.save_image(
                     torch.cat([data[0].view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
                                ], 0),
-                    "retinal_recon_test.png",
+                    f"retinal_recon_test{epoch%5}.png",
                     nrow=25, normalize=False)
 
         elif whichdecode_use == 'cropped': # cropped
             loss = loss_function_crop(recon_batch, data)
             cropped_loss_train = loss.item()
+            if count >= 0.7*max_iter:
+                utils.save_image(
+                    torch.cat([data[1].view(-1, 3, imgsize, imgsize)[:25].cpu(), recon_batch.view(-1, 3, imgsize, imgsize)[:25].cpu() 
+                               #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
+                               ], 0),
+                    f"cropped_recon_test{epoch%5}.png",
+                    nrow=25, normalize=False)
 
         elif whichdecode_use == 'skip_cropped': # skip training
             loss = loss_function_crop(recon_batch, data)

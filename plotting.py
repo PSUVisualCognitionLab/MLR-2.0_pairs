@@ -3,7 +3,7 @@ import torch
 import os
 import matplotlib.pyplot as plt
 
-folder_name = 'line'
+folder_name = 'test'
 
 checkpoint_folder_path = f'checkpoints/{folder_name}/' # the output folder for the trained model versions
 d = 1
@@ -12,7 +12,7 @@ device = torch.device(f'cuda:{d}')
 torch.cuda.set_device(d)
 print('checkpoint loaded')
 
-run_name = 'BPskip'
+run_name = 'stn_compare'
 simulation_folder_path = f'simulations/{run_name}/'
 if not os.path.exists('simulations/'):
     os.mkdir('simulations/')
@@ -20,5 +20,5 @@ if not os.path.exists('simulations/'):
 if not os.path.exists(simulation_folder_path):
     os.mkdir(simulation_folder_path)
 
-x= cd_r_bp_cnn(vae, '_color', simulation_folder_path)
-#x = fig_loc_compare(vae, simulation_folder_path)
+#x= cd_r_bp_cnn(vae, '_color', simulation_folder_path)
+x = fig_loc_compare(vae, simulation_folder_path)
