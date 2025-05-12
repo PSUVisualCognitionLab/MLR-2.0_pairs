@@ -2,6 +2,7 @@
 
 # prereq
 import torch
+from collections import defaultdict
 
 def BPTokens_with_labels(bp_outdim, bpPortion,storeLabels, shape_coef, color_coef, shape_act, color_act,l1_act,l2_act,oneHotShape, oneHotcolor, bs_testing, layernum, normalize_fact ):
     # Store and retrieve multiple items including labels in the binding pool
@@ -181,10 +182,24 @@ def BPTokens_binding_all(bp_outdim,  bpPortion, shape_coef,color_coef,shape_act,
 
     return tokenactivation, maxtoken, shape_out,color_out, l1_out
 
-def BPTokens_storage(bpsize, bpPortion,l1_act, l2_act, shape_act, color_act, location_act, shape_coeff, color_coeff, location_coeff, l1_coeff,l2_coeff, bs_testing, normalize_fact, std=1):
+# input_dict = {act_name: [act, coeff]}, l1 (skip), shape, color, spatial
+
+def BPTokens_storage(bpsize, bpPortion, activation_dict, bs_testing, normalize_fact, std=1):
     notLink_all = list()  # will be used to accumulate the specific token linkages
     BP_in_all = list()  # will be used to accumulate the bp activations for each item
     tokenBindings = list()
+
+    # activation dict format: {act_name: [act, coeff]}
+
+    activations = defaultdict(lambda: [torch.zeros([bs_testing,1]).cuda(), 0], activation_dict) # error handling
+    
+    shape_act, shape_coeff = activations['shape']
+    color_act, color_coeff = activations['color']
+    location_act, location_coeff = activations['location']
+    scale_act, scale_coeff = activations['scale']
+    l1_act, l1_coeff = activations['l1']
+    l2_act, l2_coeff = activations['l2']
+
     bp_in_shape_dim = shape_act.shape[1]  # neurons in the Bottleneck
     bp_in_color_dim = color_act.shape[1]
     bp_in_location_dim = location_act.shape[1]
@@ -226,7 +241,7 @@ def BPTokens_storage(bpsize, bpPortion,l1_act, l2_act, shape_act, color_act, loc
 
 
 
-def BPTokens_retrieveByToken( bpsize, bpPortion, BP_in_items,tokenBindings, l1_act, l2_act, shape_act, color_act, location_act,bs_testing,normalize_fact):
+def BPTokens_retrieveByToken(bpsize, bpPortion, BP_in_items,tokenBindings, activation_dict, bs_testing,normalize_fact):
 # NOW REMEMBER THE STORED ITEMS
     #notLink_all = list()  # will be used to accumulate the specific token linkages
     BP_in_all = list()  # will be used to accumulate the bp activations for each item
@@ -242,6 +257,15 @@ def BPTokens_retrieveByToken( bpsize, bpPortion, BP_in_items,tokenBindings, l1_a
     tokenBindings.append(location_fw)
     tokenBindings.append(L1_fw)
     tokenBindings.append(L2_fw)
+
+    activations = defaultdict(lambda: [torch.zeros([bs_testing,1]).cuda(), 0], activation_dict) # error handling
+    
+    shape_act, shape_coeff = activations['shape']
+    color_act, color_coeff = activations['color']
+    location_act, location_coeff = activations['location']
+    scale_act, scale_coeff = activations['scale']
+    l1_act, l1_coeff = activations['l1']
+    l2_act, l2_coeff = activations['l2']
 
     bp_in_shape_dim = shape_act.shape[1]  # neurons in the Bottleneck
     bp_in_color_dim = color_act.shape[1]
@@ -273,4 +297,5 @@ def BPTokens_retrieveByToken( bpsize, bpPortion, BP_in_items,tokenBindings, l1_a
         color_out_all[items, :] = color_out_eachimg / bpPortion
         location_out_all[items, :] = location_out_eachimg / bpPortion
 
-    return shape_out_all, color_out_all, location_out_all, L2_out_all, L1_out_all
+    return {'shape':shape_out_all, 'color':color_out_all, 
+            'location':location_out_all, 'scale':[], 'l2':L2_out_all, 'l1':L1_out_all}
