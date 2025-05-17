@@ -26,11 +26,26 @@ colorvals = [
     [1-colorrange,1-colorrange,1-colorrange]
 ]
 
+class RandomRotate90:
+    """
+    Rotate a PIL image or torch Tensor by k * 90°   with k ∈ {0,1,2,3}.
+    Works before or after ToTensor().
+    """
+    def __init__(self, p=1.0):
+        self.p = p                                    # 1.0 = always, <1 makes it optional
+
+    def __call__(self, img):
+        if torch.rand(1).item() > self.p:             # optional skip
+            return img
+        k = torch.randint(0, 4, ()).item()            # 0,1,2,3
+        return torch_transforms.functional.rotate(img, angle=90 * k)
+
 class Colorize_specific:
     def __init__(self, col):
         self.col = col
 
     def __call__(self, img):
+        img = img.convert("L")
         # col: an int index for which base color is being used
         rgb = colorvals[self.col]  # grab the rgb for this base color
 
@@ -323,6 +338,13 @@ class Dataset(data.Dataset):
 
         else:
             self.scale = False
+        
+        #initialize rotation:
+        if 'rotate' in transforms:
+            self.rotate = transforms['rotate']
+        
+        else:
+            self.rotate = False
 
         # initialize skip connection
         if 'skip' in transforms:
@@ -336,7 +358,7 @@ class Dataset(data.Dataset):
 
         self.no_color_3dim = No_Color_3dim()
         self.totensor = ToTensor()
-        self.target_dict = {'mnist':[0,9], 'emnist':[10,35], 'fashion_mnist':[36,45], 'cifar10':[46,55]}
+        self.target_dict = {'mnist':[0,9], 'emnist':[10,35], 'fashion_mnist':[36,45], 'cifar10':[0,9]} #[46,55]
 
         if dataset == 'emnist':
             self.lowercase = list(range(0,10)) + list(range(36,63))
@@ -375,7 +397,7 @@ class Dataset(data.Dataset):
             base_dataset = datasets.MNIST(root='./mnist_data/', train=train, transform = None, download=True)
 
         elif dataset == 'emnist':
-            split = 'byclass'
+            split = 'letters' #by_class
             # raw emnist dataset is rotated and flipped by default, the applied transforms undo that
             base_dataset = datasets.EMNIST(root='./data', split=split, train=train, transform=torch_transforms.Compose([lambda img: torch_transforms.functional.rotate(img, -90),
             lambda img: torch_transforms.functional.hflip(img)]), download=True)
@@ -421,7 +443,8 @@ class Dataset(data.Dataset):
         elif type(self.dataset) != Image.Image:
             image, target = self.dataset[index]
             if self.name == 'emnist' and self.train == True:
-                image, target = self.dataset[self.indices[random.randint(0,len(self.indices)-1)]]
+                #image, target = self.dataset[self.indices[random.randint(0,len(self.indices)-1)]]
+                pass
             else:
                 target += self.target_dict[self.name][0]
 
@@ -453,6 +476,9 @@ class Dataset(data.Dataset):
         if self.name == 'cifar10':
             resize = torch_transforms.Resize((28, 28))
             image =  resize(image)# resize 32,32 -> 28,28
+        
+        if self.rotate == True:
+            transform_list += [RandomRotate90()]
 
         # retina
         if self.retina == True:

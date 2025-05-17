@@ -136,7 +136,8 @@ def train_labels(vae, epoch, train_loader, optimizer_shapelabels, optimizer_colo
         z_shape_label = vae_shape_labels(input_oneHot,n)
         z_color_label = vae_color_labels(color_oneHot)
 
-        z_shape, z_color, z_location = vae.activations(image)
+        activations = vae.activations(image, False)
+        z_shape, z_color = activations['shape'], activations['color']
 
         # train shape label net
         

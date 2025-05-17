@@ -1,4 +1,6 @@
 import sys
+import time
+#time.sleep(10800)
 import argparse
 
 parser = argparse.ArgumentParser(description="Training of MLR-2.0")
@@ -6,6 +8,7 @@ parser.add_argument("--load_prev", type=bool, default=False, help="Begin trainin
 parser.add_argument("--cuda_device", type=int, default=1, help="Which cuda device to use")
 parser.add_argument("--cuda", type=bool, default=True, help="Cuda availability")
 parser.add_argument("--folder", type=str, default='test', help="Where to store checkpoints in checkpoints/")
+parser.add_argument("--dataset", type=str, default='mnist', help="Which dataset to train on/")
 parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label_net', 'SVM'], help="Which components to train")
 parser.add_argument("--wandb", type=bool, default=False, help="Track training with wandb")
 parser.add_argument("--checkpoint_name", type=str, default='mVAE_checkpoint.pth', help="file name of checkpoint .pth")
@@ -29,11 +32,17 @@ folder_name = args.folder
 #torch.set_default_dtype(torch.float64)
 checkpoint_folder_path = f'checkpoints/{folder_name}/' # the output folder for the trained model versions
 
+if not os.path.exists('training_samples/'):
+    os.mkdir('training_samples/')
+
 if not os.path.exists('checkpoints/'):
     os.mkdir('checkpoints/')
 
 if not os.path.exists(checkpoint_folder_path):
     os.mkdir(checkpoint_folder_path)
+
+if not os.path.exists(f'training_samples/{folder_name}/'):
+    os.mkdir(f'training_samples/{folder_name}/')
 
 if args.cuda is True:
     d = args.cuda_device
@@ -62,9 +71,9 @@ else:
 
 #vae = nn.DataParallel(vae)
 
-dataset_name = 'cifar10'
+dataset_name = args.dataset
 # trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
-mnist_transforms = {'retina':True, 'colorize':False, 'scale':True} #colorize false for cifar
+mnist_transforms = {'retina':True, 'colorize':True, 'rotate':False, 'scale':True} #colorize false for cifar
 
 mnist_test_transforms = {'retina':True, 'colorize':True, 'scale':True}
 skip_transforms = {'skip':True, 'colorize':True}
@@ -87,9 +96,9 @@ block_loader = block_dataset.get_loader(bs)
 
 
 #emnist_skip = Dataset('emnist', skip_transforms)
-mnist_skip = Dataset('mnist', skip_transforms)
+mnist_skip = Dataset(dataset_name, skip_transforms)
 
-train_loader_noSkip = torch.utils.data.DataLoader(dataset=ConcatDataset([mnist_dataset, emnist_dataset, emnist_dataset]), batch_size=bs, shuffle=True,  drop_last= True)
+train_loader_noSkip = torch.utils.data.DataLoader(dataset=ConcatDataset([emnist_dataset, emnist_dataset, emnist_dataset]), batch_size=bs, shuffle=True,  drop_last= True)
 #concat datasets and init dataloaders
 #train_loader_noSkip = mnist_dataset.get_loader(bs)
 #sample_loader_noSkip = mnist_dataset.get_loader(25)
@@ -103,7 +112,7 @@ vae.to(device)
 dataloaders = [train_loader_noSkip, None, mnist_skip, test_loader_noSkip, None, block_loader]
 
 print(f'Training: {args.train_list}')
-epoch_count = 140
+epoch_count = 60
 #train mVAE
 if 'mVAE' in args.train_list:
     print('Training: mVAE')

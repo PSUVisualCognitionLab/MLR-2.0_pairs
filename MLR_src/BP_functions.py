@@ -191,14 +191,15 @@ def BPTokens_storage(bpsize, bpPortion, activation_dict, bs_testing, normalize_f
 
     # activation dict format: {act_name: [act, coeff]}
 
-    activations = defaultdict(lambda: [torch.zeros([bs_testing,1]).cuda(), 0], activation_dict) # error handling
-    
+    activations = defaultdict(lambda: [torch.zeros([bs_testing,1]).cuda(), 0], activation_dict) # error handling, default 0 coeffs
+    # activation multi-hot tensor to track which reps are being stored
     shape_act, shape_coeff = activations['shape']
     color_act, color_coeff = activations['color']
     location_act, location_coeff = activations['location']
     scale_act, scale_coeff = activations['scale']
     l1_act, l1_coeff = activations['l1']
     l2_act, l2_coeff = activations['l2']
+    #print(l1_act.size())
 
     bp_in_shape_dim = shape_act.shape[1]  # neurons in the Bottleneck
     bp_in_color_dim = color_act.shape[1]
@@ -227,9 +228,9 @@ def BPTokens_storage(bpsize, bpPortion, activation_dict, bs_testing, normalize_f
         BP_in_all.append(BP_in_eachimg)  # appending and stacking images
         notLink_all.append(notLink)
     # now sum all of the BPs together to form one consolidated BP activation set.
-    BP_in_items = torch.stack(BP_in_all)
-    BP_in_items = torch.squeeze(BP_in_items, 1)
-    BP_in_items = torch.sum(BP_in_items, 0).view(1, -1)  # Add them up
+    BP_activation = torch.stack(BP_in_all)
+    BP_activation = torch.squeeze(BP_activation, 1)
+    BP_activation = torch.sum(BP_activation, 0).view(1, -1)  # Add them up
     tokenBindings.append(torch.stack(notLink_all))  # this is the set of 0'd connections for each of the tokens
     tokenBindings.append(shape_fw)
     tokenBindings.append(color_fw)
@@ -237,11 +238,11 @@ def BPTokens_storage(bpsize, bpPortion, activation_dict, bs_testing, normalize_f
     tokenBindings.append(L1_fw)
     tokenBindings.append(L2_fw)
 
-    return BP_in_items, tokenBindings
+    return BP_activation, tokenBindings
 
 
-
-def BPTokens_retrieveByToken(bpsize, bpPortion, BP_in_items,tokenBindings, activation_dict, bs_testing,normalize_fact):
+# BP_in_items -> BP_activations
+def BPTokens_retrieveByToken(bpsize, bpPortion, BP_in_items,tokenBindings, activation_dict, bs_testing, normalize_fact):
 # NOW REMEMBER THE STORED ITEMS
     #notLink_all = list()  # will be used to accumulate the specific token linkages
     BP_in_all = list()  # will be used to accumulate the bp activations for each item
@@ -266,6 +267,7 @@ def BPTokens_retrieveByToken(bpsize, bpPortion, BP_in_items,tokenBindings, activ
     scale_act, scale_coeff = activations['scale']
     l1_act, l1_coeff = activations['l1']
     l2_act, l2_coeff = activations['l2']
+    #print(l1_act.size())
 
     bp_in_shape_dim = shape_act.shape[1]  # neurons in the Bottleneck
     bp_in_color_dim = color_act.shape[1]
@@ -299,3 +301,7 @@ def BPTokens_retrieveByToken(bpsize, bpPortion, BP_in_items,tokenBindings, activ
 
     return {'shape':shape_out_all, 'color':color_out_all, 
             'location':location_out_all, 'scale':[], 'l2':L2_out_all, 'l1':L1_out_all}
+
+# store both tok1,tok2, probe, take whichever token is higher
+
+#def ()
