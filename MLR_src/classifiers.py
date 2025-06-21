@@ -28,7 +28,7 @@ def classifier_shape_train(vae, whichdecode_use, train_dataset):
         utils.save_image(data[0:10],'train_sample.png')
 
         data = data.to(device)
-        activations = vae.activations(data, False)
+        activations = vae.activations(data, False, None, 'object')
         z_shape = activations['shape'].to(device)
         print('training shape bottleneck against color labels sc')
         clf_sc.fit(z_shape.cpu().numpy(), train_colorlabels.cpu())
@@ -46,7 +46,7 @@ def classifier_shape_test(vae, whichdecode_use, clf_ss, clf_sc, test_dataset, co
         test_shapelabels=labels[0].clone()
         test_colorlabels=labels[1].clone()
         data = data.cuda()
-        activations = vae.activations(data, False)
+        activations = vae.activations(data, False, None, 'object')
         z_shape = activations['shape'].to(device)
         pred_ss = clf_ss.predict(z_shape.cpu())
         pred_sc = clf_sc.predict(z_shape.cpu())

@@ -1191,13 +1191,15 @@ def fig_efficient_rep(vae, folder_path):
     print('generating Figure efficient reconstruction plot')
     retina_size = 100
     imgsize = 28
+    bpsize = 2500         #size of the binding pool
+    token_overlap = 0.15
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
     numimg = 7
     n_2 = 1
     n_4 = 4
     #make the data loader
     test_loader_mnist = Dataset('mnist',{'colorize':True}, train=True).get_loader(numimg)
-    #test_loader_emnist = Dataset('emnist',{'colorize':True}, train=True).get_loader(numimg)
+    test_loader_emnist = Dataset('emnist',{'colorize':True}, train=True).get_loader(numimg)
     
     #Code showing the data loader for how the model was trained, empty dict in 3rd param is for any color:
     '''train_loader_noSkip, train_loader_skip, test_loader_noSkip, test_loader_skip = dataset_builder('mnist',bs,
@@ -1205,26 +1207,26 @@ def fig_efficient_rep(vae, folder_path):
     all_imgs = []
 
     #load in some examples of Bengali Characters
-    for i in range (1,7):
+    '''for i in range (1,7):
         color = Colorize_specific(random.randint(0,9))
         img = Image.open(f'data/current_bengali/{i}_thick.png')
         img_new = convert_tensor(color(img))
         
         all_imgs.append(img_new)
     all_imgs = torch.stack(all_imgs)
-    imgs = all_imgs.view(-1, 3, imgsize, imgsize).cuda()    
+    imgs = all_imgs.view(-1, 3, imgsize, imgsize).cuda()   ''' 
 
     dataiter_mnist = iter(test_loader_mnist)
-    #dataiter_emnist = iter(test_loader_emnist)
+    dataiter_emnist = iter(test_loader_emnist)
     sc_2 = []
     l1_2 = []
     sc_4 = []
     l1_4 = []
 
-    for count in range(0,2):
+    for count in range(0,100):
         data_mnist, labels = next(dataiter_mnist)
-        #data_emnist, labels = next(dataiter_emnist)
-        data_emnist = imgs # Bengali chars not emnist
+        data_emnist, labels = next(dataiter_emnist)
+        #data_emnist = imgs # Bengali chars not emnist
         
         mnist_sample = data_mnist[:n_4].cuda()
         emnist_sample = data_emnist[:n_4].cuda()

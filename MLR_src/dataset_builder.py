@@ -255,6 +255,47 @@ def generate_offset_line_crop_image(image_size=(28, 28)):
     
     return image, angle_degrees
 
+DATA_PATH = './data'
+INDEX_CACHE_PATH = os.path.join(DATA_PATH, 'emnist_uppercase_indices.pt')
+
+UPPERCASE_LABEL_INDICES = list(range(10,36))
+LABEL_REMAP = {label: i for i, label in enumerate(UPPERCASE_LABEL_INDICES)}
+
+class UppercaseEMNIST(torch.utils.data.Dataset):
+    def __init__(self, root=DATA_PATH, train=True, transform=None):
+        self.root = root
+        self.train = train
+
+        self.base = datasets.EMNIST(
+            root=self.root,
+            split='balanced',
+            train=self.train,
+            download=True,
+            transform=torch_transforms.Compose([lambda img: torch_transforms.functional.rotate(img, -90),
+            lambda img: torch_transforms.functional.hflip(img)])
+        )
+
+        # Cache file includes 'train' in name to avoid collisions
+        cache_file = INDEX_CACHE_PATH.replace('.pt', f'_train{int(train)}.pt')
+
+        if os.path.exists(cache_file):
+            self.indices = torch.load(cache_file)
+        else:
+            print('indexing EMNIST dataset...')
+            self.indices = [
+                i for i, (_, label) in enumerate(self.base)
+                if label in LABEL_REMAP
+            ]
+            torch.save(self.indices, cache_file)
+            print(f"Cached filtered indices to {cache_file}")
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        img, label = self.base[self.indices[idx]]
+        return img, LABEL_REMAP[label]
+
 # the Dataset class defined below inherits the standard PyTorch data.Dataset class but modifies the __getitem__ method to apply
 # complex transformations on request. the init of the Dataset class handles the necessary multi-transformation logic depending on
 # the transforms input dict. all_possible_labels returns all valid feature combinations given the specified transformations.
@@ -360,38 +401,6 @@ class Dataset(data.Dataset):
         self.totensor = ToTensor()
         self.target_dict = {'mnist':[0,9], 'emnist':[10,35], 'fashion_mnist':[36,45], 'cifar10':[0,9]} #[46,55]
 
-        if dataset == 'emnist':
-            self.lowercase = list(range(0,10)) + list(range(36,63))
-            if os.path.exists('uppercase_ind_train.pt'):
-                if self.train == True:
-                    self.indices = torch.load('uppercase_ind_train.pt')
-                else:
-                    self.indices = torch.load('uppercase_ind_test.pt')
-            else:
-                print('indexing emnist dataset:')
-                self.indicies, self.indices = self._filter_indices()
-                print('indexing complete')
-
-    def _filter_indices(self): # manually extracts which samples in emnist are uppercase letters to improve data consistency for training
-        base_dataset = datasets.EMNIST(root='./data', split='byclass', train=False, transform=torch_transforms.Compose([lambda img: torch_transforms.functional.rotate(img, -90),
-            lambda img: torch_transforms.functional.hflip(img)]), download=True)
-        indices_test = []
-        indices_train = []
-        count = {target: 0 for target in list(range(10,36))}
-        print('starting indices collection')
-        for i in range(len(base_dataset)):
-            img, target = base_dataset[i]
-            if target not in self.lowercase and count[target] <= 6000:
-                indices_test += [i]
-                indices_train += [i]
-                count[target] += 1
-        print(count)
-        torch.save(indices_train, 'uppercase_ind_train.pt')
-        torch.save(indices_test, 'uppercase_ind_test.pt')
-        print('saved indices')
-        indices_train = torch.load('uppercase_ind_train.pt')
-        return indices_train, indices_test
-
     def _build_dataset(self, dataset, train=True):
         if dataset == 'mnist':
             base_dataset = datasets.MNIST(root='./mnist_data/', train=train, transform = None, download=True)
@@ -399,8 +408,16 @@ class Dataset(data.Dataset):
         elif dataset == 'emnist':
             split = 'letters' #by_class
             # raw emnist dataset is rotated and flipped by default, the applied transforms undo that
-            base_dataset = datasets.EMNIST(root='./data', split=split, train=train, transform=torch_transforms.Compose([lambda img: torch_transforms.functional.rotate(img, -90),
-            lambda img: torch_transforms.functional.hflip(img)]), download=True)
+            '''DATA_PATH = './data'
+            SAVE_PATH = os.path.join(DATA_PATH, 'emnist_uppercase.pt')
+            if not os.path.exists(SAVE_PATH):
+                print('Filtering EMNIST dataset')
+                process_and_save_uppercase_emnist()'''
+            
+            base_dataset = UppercaseEMNIST()
+
+            #base_dataset = datasets.EMNIST(root='./data', split=split, train=train, transform=torch_transforms.Compose([lambda img: torch_transforms.functional.rotate(img, -90),
+            #lambda img: torch_transforms.functional.hflip(img)]), download=True)
 
         elif dataset == 'fashion_mnist':
             base_dataset = datasets.FashionMNIST('./fashionmnist_data/', train=train, transform = None, download=True)
@@ -413,6 +430,9 @@ class Dataset(data.Dataset):
         
         elif dataset == 'line':
             base_dataset = None
+        
+        elif dataset == 'quickdraw':
+            base_dataset = np.load('data/quickdraw_npy/full_numpy_bitmap_all_objs.npy')
 
         elif os.path.exists(dataset):
             base_dataset = Image.open(rf'{dataset}')
@@ -439,11 +459,15 @@ class Dataset(data.Dataset):
         
         elif self.name == 'line':
             image, target = generate_offset_line_crop_image()
+        
+        elif self.name == 'quickdraw':
+            image = Image.fromarray(self.dataset[index, :-1].reshape(28, 28))  # image
+            target = int(self.dataset[index, -1])  # label
 
         elif type(self.dataset) != Image.Image:
             image, target = self.dataset[index]
             if self.name == 'emnist' and self.train == True:
-                #image, target = self.dataset[self.indices[random.randint(0,len(self.indices)-1)]]
+                #image = torch_transforms.ToPILImage()(image)
                 pass
             else:
                 target += self.target_dict[self.name][0]

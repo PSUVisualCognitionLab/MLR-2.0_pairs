@@ -74,12 +74,18 @@ def image_recon(z_labels):
         output=vae.decoder_noskip(z_labels)
     return output
 
-def load_checkpoint_shapelabels(filepath):
+def load_checkpoint_shapelabels(filepath, d=0):
+    if torch.cuda.is_available():
+        device = torch.device(f'cuda:{d}')
+        torch.cuda.set_device(d)
+    else:
+        device = 'cpu'
+    
     checkpoint = torch.load(filepath)
     vae_shape_labels.load_state_dict(checkpoint['state_dict_shape_labels'])
     for parameter in vae_shape_labels.parameters():
         parameter.requires_grad = False
-    vae_shape_labels.eval()
+    vae_shape_labels.eval().to(device)
     return vae_shape_labels
 
 def load_checkpoint_colorlabels(filepath):

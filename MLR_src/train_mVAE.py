@@ -3,7 +3,7 @@ import torch
 from MLR_src.mVAE import train
 import torch.optim as optim
 
-def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, start_epoch = 1):
+def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, start_epoch = 1, dimensions = []):
     if use_wandb is True:
         import wandb
         from MLR_src.wandb_setup import initialize_wandb, log_system_metrics
@@ -11,13 +11,10 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, star
 
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     seen_labels = {}
-    components = ['cropped'] * 2 + ['skip_cropped']
+    components = 3*['shape'] + 3*['color']+ 3*['cropped'] + 3*['skip_cropped'] + ['retinal'] +  3*['object'] + 3*['cropped_object'] + ['retinal_object']
 
     for epoch in range(start_epoch, epoch_count):
-        if epoch >= 105:
-            components = ['cropped'] * 4 + ['skip_cropped'] * 2 + ['retinal']
-
-        loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components)
+        loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components, 600, checkpoint_folder)
 
         if use_wandb is True:
             wandb.log({
@@ -33,7 +30,8 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, star
         vae.eval()
         checkpoint =  {
             'state_dict': vae.state_dict(),
-            'labels': seen_labels
+            'labels': seen_labels,
+            'dimensions': dimensions
                     }
         if epoch % 4 == 0:
             torch.save(checkpoint, f'checkpoints/{checkpoint_folder}/mVAE_checkpoint.pth')

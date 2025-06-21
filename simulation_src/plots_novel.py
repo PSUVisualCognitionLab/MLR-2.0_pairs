@@ -77,7 +77,7 @@ colorLabel_coeff = 1  #coefficient of the color label
 location_coeff = 0  #coefficient of the color label
 
 bpsize = 10000#00         #size of the binding pool
-token_overlap =0.3
+token_overlap =0.1
 bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
 normalize_fact_familiar=1
@@ -1250,6 +1250,48 @@ def fig_loc_compare(vae, folder_path):
 
     print("Images with labels saved successfully.")
     return []
+
+def obj_back_swap(vae, device, folder_path):
+    print('swapping obj-background')
+    imgsize= 28
+
+    #data
+    cifar_transforms = {'retina':False, 'colorize':False, 'scale':False}
+    mnist_transforms = {'retina':False, 'colorize':True, 'scale':False}
+
+    mnist_dataloader = iter(Dataset('mnist', mnist_transforms).get_loader(2))
+    cifar_dataloader = iter(Dataset('cifar10', cifar_transforms).get_loader(10))
+
+    mnist_data = next(mnist_dataloader)[0].to(device)
+    cifar_data = next(cifar_dataloader)[0].to(device)
+
+    data = torch.cat([mnist_data, cifar_data]) #, torch.zeros(1,3,28,28).to(device)
+
+    z_back_w, z_obj_w, junk_theta = vae.activations(torch.zeros(len(data),3,imgsize,imgsize).to(device))
+    #z_back_w = vae.encode_back(torch.ones(len(data),3,imgsize,imgsize).to(device))
+    z_back, z_obj, obj_theta  = vae.activations(data)
+    act_in = {'shape':[z_back, 1], 'color':[z_obj, 1]}
+    BPOut_all, Tokenbindings_all = BPTokens_storage(bpsize, bpPortion, act_in, 12,normalize_fact_novel)
+        
+    act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_all, Tokenbindings_all, act_in, 12,normalize_fact_novel)
+
+
+    out = vae.decoder_cropped(z_back, z_obj, 0, obj_theta )
+    out_bp = vae.decoder_cropped(act_out['shape'], act_out['color'], 0, obj_theta )
+    out_obj = vae.decoder_color(z_back, z_obj, 0, obj_theta )
+    out_back = vae.decoder_shape(z_back, z_obj, 0, obj_theta )
+    out_swap = vae.decoder_cropped(torch.cat((z_back[-1:].clone(), z_back[:-1]), dim=0), z_obj, 0, obj_theta )
+    out_back_w = vae.decoder_cropped(z_back_w, z_obj, 0, obj_theta )
+    out_obj_w = vae.decoder_cropped(z_back, z_obj_w, 0, obj_theta )
+
+    utils.save_image(
+        torch.cat([data.view(-1, 3, imgsize, imgsize).cpu(), out.view(-1, 3, imgsize, imgsize).cpu(),
+                    out_bp.view(-1, 3, imgsize, imgsize).cpu(),
+                    out_back.view(-1, 3, imgsize, imgsize).cpu(), out_obj.view(-1, 3, imgsize, imgsize).cpu(),
+                    out_swap.view(-1, 3, imgsize, imgsize).cpu(), out_back_w.view(-1, 3, imgsize, imgsize).cpu(),
+                    out_obj_w.view(-1, 3, imgsize, imgsize).cpu() ], 0),
+        f"{folder_path}figure_swap_background1.png",
+        nrow=len(data), normalize=False)
 
 def fig_2n(vae, folder_path):
     print('bengali reconstructions')
