@@ -77,9 +77,10 @@ def load_dimensions(filepath, d=0):
 
 # model training data set and dimensions
 data_set_flag = 'padded_mnist_3rd' # mnist, cifar10, padded_mnist, padded_cifar10
-imgsize = 28
-retina_size = 64 # by default should be same size as image
-vae_type_flag = 'CNN' # must be CNN or FC
+imgsize = 28    #this is the size used for the cropped representations
+retina_size = 64 # The large retina
+#^^^this is often ignored or hardcoded below as 64, need to change
+vae_type_flag = 'CNN' # must be CNN or FC,  But FC is deprecated at this point
 
 
 
@@ -111,11 +112,11 @@ class VAE_CNN(nn.Module):
         self.fc33 = nn.Linear(h_dim2, z_dim)  # color
         self.fc34 = nn.Linear(h_dim2, z_dim)
 
-        if draw_dim is True:
+        if draw_dim is True:  #used for quickdraw dataset
             # bottle neck part  # Latent vectors mu and sigma
             self.fc35 = nn.Linear(h_dim2, z_dim + 2)  # object
             self.fc36 = nn.Linear(h_dim2, z_dim + 2)
-            self.fc4o = nn.Linear(z_dim + 2, h_dim2)  # object decode
+            self.fc4o = nn.Linear(z_dim + 2, h_dim2)  # object decode... Unclear what this is for
 
         # decoder part
         self.fc4s = nn.Linear(z_dim, h_dim2)  # shape
@@ -222,7 +223,7 @@ class VAE_CNN(nn.Module):
 
         return retina
     
-    def encoder(self, x, hskip = None):
+    def encoder(self, x, hskip = None):   #used for MNIST and EMNIST
         if hskip is not None: # for reprocessing l1 through bottleneck
             h = hskip.view(-1, 16, imgsize, imgsize)
             h = self.relu(self.bn2(self.conv2(h)))        
@@ -242,7 +243,7 @@ class VAE_CNN(nn.Module):
 
         return self.fc31(h), self.fc32(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
 
-    def encoder_object(self, x, hskip = None):  
+    def encoder_object(self, x, hskip = None):    #used for Quickdraw images  (with color)
         if hskip is not None: # for reprocessing l1 through bottleneck
             h = hskip.view(-1, 16, imgsize, imgsize)
             h = self.relu(self.bn2(self.conv2(h)))        
