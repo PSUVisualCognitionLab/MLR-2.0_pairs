@@ -131,7 +131,6 @@ if 'mVAE' in args.train_list:
 #train_labels
 if 'label_net' in args.train_list:
     print('Training: label networks')
-    
     train_labelnet(label_dataloaders, vae, 15, folder_name)
 
 #train_classifiers
