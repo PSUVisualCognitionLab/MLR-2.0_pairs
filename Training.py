@@ -62,8 +62,8 @@ else:
     device = 'cpu'
     print('CUDA not available')
 
-bs=100
-SVT_bs = 25000
+bs=100   #batch size for training the main VAE
+SVT_bs = 25000  #batch size for training the spatial vision transformer
 obj_dim = True if dataset_name == 'quickdraw' else False
 # to resume training an existing model checkpoint, uncomment the following line with the checkpoints filename
 if load is True:
@@ -78,8 +78,8 @@ else:
 #vae = nn.DataParallel(vae)
 
 
-# trainging datasets, the return loaders flag is False so the datasets can be concated in the dataloader
-mnist_transforms = {'retina':True, 'colorize':True, 'rotate':False, 'scale':True} #colorize false for cifar
+# training datasets, the return loaders flag is False so the datasets can be concated in the dataloader
+mnist_transforms = {'retina':True, 'colorize':True, 'rotate':False, 'scale':True} #set colorize false for cifar
 
 mnist_test_transforms = {'retina':True, 'colorize':True, 'scale':True}
 skip_transforms = {'skip':True, 'colorize':True}
