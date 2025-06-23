@@ -11,6 +11,8 @@
 .outputFile
 *.png
 *.pyc
+checkpoints
+data
 MLR_src_pairs/data/
 MLR_src_pairs/data/cifar-10-batches-py/
 *.tar.gz
