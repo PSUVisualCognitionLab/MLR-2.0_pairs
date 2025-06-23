@@ -37,11 +37,11 @@ if not os.path.exists(simulation_folder_path):
 #x = fig_loc_compare(vae, simulation_folder_path)
 #x= obj_back_swap(vae, device, simulation_folder_path)
 
-#fig_retinal_mod(vae, simulation_folder_path)
-#fig_efficient_rep(vae, simulation_folder_path)
+fig_retinal_mod(vae, simulation_folder_path)
+fig_efficient_rep(vae, simulation_folder_path)
 fig_visual_synthesis(vae, vae_shape_labels, s_classes, clf_shapeS, simulation_folder_path)
-#fig_repeat_recon(vae, simulation_folder_path)
-#fig_2n(vae, simulation_folder_path)
+fig_repeat_recon(vae, simulation_folder_path)
+fig_2n(vae, simulation_folder_path)
 '''fig_2b(vae, simulation_folder_path)
 fig_2bt(vae, simulation_folder_path)
 fig_2c(vae, simulation_folder_path)'''

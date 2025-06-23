@@ -17,7 +17,6 @@ simulations
 previews
 training_samples
 newimg
-MLR_src_pairs/data/
-MLR_src_pairs/data/cifar-10-batches-py/
+mnist_data
 *.tar.gz
 *.bin
