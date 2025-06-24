@@ -2244,7 +2244,7 @@ if Tab1SuppFlag ==1:
 
     ftest_dataset = datasets.FashionMNIST(root='./fashionmnist_data/', train=False,transform=transforms.Compose([Colorize_func_secret, transforms.ToTensor()]),download=False)
     ftest_dataset.targets= ftest_dataset.targets+10
-    test_dataset_MNIST = datasets.MNIST(root='./mnist_data/', train=False,transform=transforms.Compose([Colorize_func_secret, transforms.ToTensor()]),download=False)
+    test_dataset_MNIST = datasets.MNIST(root='./data/', train=False,transform=transforms.Compose([Colorize_func_secret, transforms.ToTensor()]),download=False)
 
     #build a combined dataset out of MNIST and Fasion MNIST
     test_dataset = torch.utils.data.ConcatDataset((test_dataset_MNIST, ftest_dataset))

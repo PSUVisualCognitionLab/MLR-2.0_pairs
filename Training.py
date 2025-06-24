@@ -46,9 +46,9 @@ if not os.path.exists(f'training_samples/{folder_name}/'):
     os.mkdir(f'training_samples/{folder_name}/')
 
 if args.cuda is True:
-    d = args.cuda_device
+    d = args.cuda_device   #which cuda GPU?
 
-load = args.load_prev
+load = args.load_prev    #use a previous checkpoint?
 dataset_name = args.dataset
 
 print(f'Device: {d}')
@@ -65,7 +65,7 @@ else:
 
 bs=100   #batch size for training the main VAE
 SVT_bs = 25000  #batch size for training the spatial vision transformer
-obj_dim = True if dataset_name == 'quickdraw' else False
+obj_dim = True if dataset_name == 'quickdraw' else False    #this variable gets passed eventually into the VAE builder that creates the latent space for quickdraw
 # to resume training an existing model checkpoint, uncomment the following line with the checkpoints filename
 if load is True:
     vae = load_checkpoint(f'{checkpoint_folder_path}/{args.checkpoint_name}', d, obj_dim)
@@ -87,10 +87,10 @@ skip_transforms = {'skip':True, 'colorize':True}
 
 #emnist_dataset = Dataset('emnist', mnist_transforms)
 mnist_dataset = Dataset('emnist', mnist_test_transforms)
-emnist_dataset = Dataset(dataset_name, mnist_transforms) #emnist
+emnist_dataset = Dataset(dataset_name, mnist_transforms) 
 
 #emnist_test_dataset = Dataset('emnist', mnist_test_transforms, train= False)
-mnist_test_dataset = Dataset(dataset_name, mnist_test_transforms, train= False)
+#mnist_test_dataset = Dataset(dataset_name, mnist_test_transforms, train= False)
 
 #blocks
 block_dataset = Dataset('square', {'colorize':True, 'retina':True, 'build_retina':False})

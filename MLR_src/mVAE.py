@@ -33,7 +33,7 @@ from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION
 #torch.set_default_dtype(torch.float64)
 
 # load a saved vae checkpoint
-def load_checkpoint(filepath, d=0, draw = False):
+def load_checkpoint(filepath, d=0, draw = False):   #draw is a flag for the quickdraw dataset I think
     
     if torch.cuda.is_available():
         device = torch.device(f'cuda:{d}')

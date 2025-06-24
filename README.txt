@@ -3,7 +3,6 @@ Directories:
 MLR-src: source code for the MLR model (mVAE, label networks, SVMs...)
 checkpoints: saved weight sets for models including autoencoder, SVM and label networks
 data:  Datasets  (mnist, emnist, quickdraw, cifar, bengali characters)
-mnist_data:  Datasets (redundant with data, need to trim down)
 simulation_src: source code for all specific  simulations
 simulations: output of simulation runs
 documentation: packages to install

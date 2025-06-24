@@ -403,7 +403,7 @@ class Dataset(data.Dataset):
 
     def _build_dataset(self, dataset, train=True):
         if dataset == 'mnist':
-            base_dataset = datasets.MNIST(root='./mnist_data/', train=train, transform = None, download=True)
+            base_dataset = datasets.MNIST(root='./data/', train=train, transform = None, download=True)
 
         elif dataset == 'emnist':
             split = 'letters' #by_class

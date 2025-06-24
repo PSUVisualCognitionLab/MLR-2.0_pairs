@@ -17,6 +17,6 @@ simulations
 previews
 training_samples
 newimg
-mnist_data
+mnist_data_old
 *.tar.gz
 *.bin
