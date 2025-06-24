@@ -82,9 +82,6 @@ retina_size = 64 # The large retina
 #^^^this is often ignored or hardcoded below as 64, need to change
 vae_type_flag = 'CNN' # must be CNN or FC,  But FC is deprecated at this point
 
-
-
-
 #CNN VAE
 #this model takes in a single cropped image and a location 1-hot vector  (to be replaced by an attentional filter that determines location from a retinal image)
 #there are three latent spaces:location, shape and color and 6 loss functions
@@ -194,37 +191,34 @@ class VAE_CNN(nn.Module):
         out = out / z_where[:, 0:1].to(z_where.device)
         return out
 
-    def stn_encode(self, x):
+    def stn_encode(self, x):  # start with a full retina (e.g. 64x64) and extract the cropped object, with scale and location
         B = x.shape[0]
         # x is [B, 3, 64, 64]
         z=self.localization(x)
-        theta = self.regressor(z.view(-1, int(retina_size / 4) * int(retina_size / 4)*16))  # [B, 2, 3]
-        theta = theta.view(-1, 3).to(x.device)
-        grid = F.affine_grid(self.construct_theta(theta), (B,3,64,64), align_corners=False)  # same 64×64 resolution
-        x_transformed = F.grid_sample(x, grid, align_corners=False)
-
+        theta = self.regressor(z.view(-1, int(retina_size / 4) * int(retina_size / 4)*16))  # [B, 2, 3],  the scale and location of the item
+        theta = theta.view(-1, 3).to(x.device)   
+        grid = F.affine_grid(self.construct_theta(theta), (B,3,64,64), align_corners=False) # use torch to create an affine grid
+        x_transformed = F.grid_sample(x, grid, align_corners=False)    #then use that grid to reshape the object into the center of the retina
         # crop by slicing out the 28×28 region centered by the stn
         crop = x_transformed[:, :, 18:46, 18:46]
-        return crop, theta
+        return crop, theta    #return the crop and the scale/location data
 
-    def stn_decode(self, crop, theta):
+    def stn_decode(self, crop, theta):   # Convert a cropped item back to its original location/scale in the retina
         B = crop.shape[0]
-
-        # put the 28×28 crop back into a 64×64 retina
         canvas = torch.zeros(B, 3, 64, 64, device=crop.device)
         canvas[:, :, 18:46, 18:46] = crop  # place the 28×28 patch back
-        #canvas[:, :, 18:46, 18:46] = torch.rot90(crop, k=2, dims=(-2, -1))
+        #canvas[:, :, 18:46, 18:46] = torch.rot90(crop, k=2, dims=(-2, -1))    #TBD:  rotation
         theta = self.invert_theta(theta)
         theta = self.construct_theta(theta).to(crop.device)
         
         # reconstruct full retina
-        grid = F.affine_grid(theta, (B, 3, 64, 64), align_corners=False)
+        grid = F.affine_grid(theta, (B, 3, 64, 64), align_corners=False)   #create the opposite affine grid as the encoder to put the object at a corresponding scale/location
         retina = F.grid_sample(canvas, grid, align_corners=False)
 
         return retina
     
-    def encoder(self, x, hskip = None):   #used for MNIST and EMNIST
-        if hskip is not None: # for reprocessing l1 through bottleneck
+    def encoder(self, x, hskip = None):   #I think used for MNIST and EMNIST
+        if hskip is not None: # for reprocessing l1 through bottleneck,  note that x is ignored 
             h = hskip.view(-1, 16, imgsize, imgsize)
             h = self.relu(self.bn2(self.conv2(h)))        
             h = self.relu(self.bn3(self.conv3(h)))
@@ -243,8 +237,8 @@ class VAE_CNN(nn.Module):
 
         return self.fc31(h), self.fc32(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
 
-    def encoder_object(self, x, hskip = None):    #used for Quickdraw images  (with color)
-        if hskip is not None: # for reprocessing l1 through bottleneck
+    def encoder_object(self, x, hskip = None):    #used for Quickdraw images  (with color)  (but I think it's identical to encoder)
+        if hskip is not None: # for reprocessing l1 through bottleneck,  note that x is ignored
             h = hskip.view(-1, 16, imgsize, imgsize)
             h = self.relu(self.bn2(self.conv2(h)))        
             h = self.relu(self.bn3(self.conv3(h)))
@@ -264,15 +258,15 @@ class VAE_CNN(nn.Module):
         return self.fc35(h), self.fc36(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
 
     def activations(self, x, retinal=False, hskip = None, which_encode='digit'): # returns shape, color, scale, location, and skip(l1) latent activations
-        if which_encode == 'digit':
-            encoder = self.encoder
+        if which_encode == 'digit':   
+            encoder = self.encoder     #I think both of these functions are the same
         else:
             encoder = self.encoder_object
         
-        if hskip is not None:
+        if hskip is not None:   #skip connection activation  (not sure what latent this is )
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x, hskip)
         
-        elif retinal is True:    #passing in a cropped+ location as input
+        elif retinal is True:    #passing in a full retina as input and extracting the latent coding of the cropped representation
             x, theta = self.stn_encode(x)
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x)
         
@@ -304,12 +298,12 @@ class VAE_CNN(nn.Module):
             assert 'color' in activations, 'the color activation is missing, must have key: \'color\''
             return self.decoder_color(0, activations['color'], 0)
         
-        elif which_decode == 'cropped':
+        elif which_decode == 'cropped':  #shape and color combined
             assert 'color' in activations, 'the color activation is missing, both shape are color are needed for cropped, must have key: \'color\''
             assert 'shape' in activations, 'the shape activation is missing, both shape are color are needed for cropped, must have key: \'shape\''
             return self.decoder_cropped(activations['shape'], activations['color'], 0)
 
-        elif 'retinal' in which_decode:
+        elif 'retinal' in which_decode:  #extract full retina
             assert 'location' in activations and 'scale' in activations, 'the scale or location activation is missing, must have keys: \'scale\' and \'location\''
             theta = torch.cat([activations['scale'], activations['location']], 1)
             retinal_decode = None

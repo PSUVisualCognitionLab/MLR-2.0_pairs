@@ -62,6 +62,7 @@ else:
     device = 'cpu'
     print('CUDA not available')
 
+
 bs=100   #batch size for training the main VAE
 SVT_bs = 25000  #batch size for training the spatial vision transformer
 obj_dim = True if dataset_name == 'quickdraw' else False
