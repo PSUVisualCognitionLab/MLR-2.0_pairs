@@ -734,7 +734,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         optimizer.zero_grad()
         
         # determine which component is being trained
-        comp_ind = count % len(components)
+        comp_ind = count % len(components)  
         whichdecode_use = components[comp_ind]
         keepgrad = component_to_grad(whichdecode_use)
 
