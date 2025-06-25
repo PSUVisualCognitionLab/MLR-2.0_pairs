@@ -621,15 +621,14 @@ def progress_out(vae, data, checkpoint_folder):
     device = next(vae.parameters()).device 
     sample_size = 25
     vae.eval()
-    sample = data[:sample_size].to(device)
-    activations = vae.activations(sample, False)
-    recon = vae.decoder_cropped(activations['shape'],activations['color'])
-    skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])
-    shape = vae.decoder_shape(activations['shape'], 0, 0)
-    color = vae.decoder_color(0, activations['color'], 0)
+    sample = data[:sample_size].to(device)   #the actual image
+    activations = vae.activations(sample, False)   #get the activations from this image 
+    recon = vae.decoder_cropped(activations['shape'],activations['color'])   #combine the shape and color maps to reconstructions
+    skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
+    shape = vae.decoder_shape(activations['shape'], 0, 0)                   # The shape reconstruction alone
+    color = vae.decoder_color(0, activations['color'], 0)                   #the color alone
     vae.train()
      
-
     utils.save_image(
             torch.cat([sample.view(sample_size, 3, imgsize, imgsize)[:25], recon.view(sample_size, 3, imgsize, imgsize)[:25], skip.view(sample_size, 3, imgsize, imgsize)[:25],
                        shape.view(sample_size, 3, imgsize, imgsize)[:25], color.view(sample_size, 3, imgsize, imgsize)[:25]], 0),
@@ -765,12 +764,13 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             #loss = loss_function(recon_batch['recon'], data, recon_batch['crop'])
             loss = loss_function(recon_batch['recon'], data, None)
             retinal_loss_train = loss.item()
+            #demonstrate the quality of reconstructions of letters at specific locations and scales and colors on the retina
             if count >= 0.9*max_iter:
                 utils.save_image(
                     torch.cat([data[0].view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
                                ], 0),
-                    f"training_samples/{checkpoint_folder}/retinal_recon_test{epoch%3}.png",
+                    f"training_samples/{checkpoint_folder}/retinal_recon_ColorLetter{epoch%3}.png",
                     nrow=25, normalize=False)
 
         elif whichdecode_use == 'cropped': # cropped
@@ -788,12 +788,13 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         
         elif whichdecode_use == 'retinal_object': # retinal object training
             loss = loss_function(recon_batch['recon'], data, None)
+            #demonstrate the quality of reconstructions of objects at specific locations and scales and colors on the retina
             if count >= 0.9*max_iter:
                 utils.save_image(
                     torch.cat([data[0].view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
                                ], 0),
-                    f"training_samples/{checkpoint_folder}/retinal_recon_obj_test{epoch%3}.png",
+                    f"training_samples/{checkpoint_folder}/retinal_recon_obj_{epoch%3}.png",
                     nrow=25, normalize=False)
         
         #l1_norm = sum(p.abs().sum() for p in vae.parameters())
