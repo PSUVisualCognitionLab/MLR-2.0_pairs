@@ -118,7 +118,7 @@ mnist_skip = mnist_skip.get_loader(bs)
 #add colorsquares dataset to training
 vae.to(device)
 
-dataloaders = [train_loader_noSkip, emnist_loader, mnist_skip, test_loader_noSkip, None, block_loader]
+dataloaders = [train_loader_noSkip, emnist_loader, mnist_skip, test_loader_noSkip, None, block_loader]   #there need to be 6 dataloaders passed in to 
 label_dataloaders = [emnist_loader, emnist_loader, mnist_skip, test_loader_noSkip, None, block_loader]
 SVT_dataloaders = [train_loader_SVT, emnist_loader, mnist_skip, test_loader_noSkip, None, block_loader]
 

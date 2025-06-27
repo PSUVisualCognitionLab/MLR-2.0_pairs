@@ -11,12 +11,13 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, star
 
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     seen_labels = {}
+    #specifies the order the model latents will be trained
     components = 3*['shape'] + 3*['color']+ 3*['cropped'] + 3*['skip_cropped'] + ['retinal'] +  3*['object'] + 3*['cropped_object'] + ['retinal_object']
-
+    
     for epoch in range(start_epoch, epoch_count):
         loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components, 600, checkpoint_folder)
 
-        if use_wandb is True:
+        if use_wandb is True:   #this connects with weights and biases.. a website that tracks loss data over time.  Currently inoperable due to version conflict
             wandb.log({
             'epoch': epoch,
             'retinal/training_loss': loss_lst[0],

@@ -732,7 +732,8 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         
         optimizer.zero_grad()
         
-        # determine which component is being trained
+        # determine which latent or connection is being trained  (shape/color/skip etc)
+        #depending ont he latent that we will train on this iteration, select the appropriate dataloader
         comp_ind = count % len(components)  
         whichdecode_use = components[comp_ind]
         keepgrad = component_to_grad(whichdecode_use)
@@ -799,6 +800,8 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         
         #l1_norm = sum(p.abs().sum() for p in vae.parameters())
         #loss += l1_norm*0.0001
+
+        #this is the magic line in pytorch that actually computes the gradients for the entire model
         loss.backward()
 
         train_loss += loss.item()

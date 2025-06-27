@@ -26,4 +26,11 @@ MLR-2.0 model is outlined in MLR_src/
  - train_mVAE.py:  function to manage training of the mVAE
 
 Simulation files are defined in simulation_src
- - 
+ 
+
+
+ Training is currently a bit convoluted  
+ Example:
+ python Training.py --dataset quickdraw
+
+Training.py calls train_mVAE.py, which in turn calls the train function in mVAE.py.   This is tech debt we should solve

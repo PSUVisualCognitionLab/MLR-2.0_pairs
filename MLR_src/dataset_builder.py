@@ -311,9 +311,9 @@ class Dataset(data.Dataset):
 
         else:
             raise ValueError('invalid dataset input type')
-
-        # initialize retina
-        if 'retina' in transforms:
+        print(transforms)
+        # Use if the stimulus will put a stimulus into the retina
+        if 'retina' in transforms: 
             self.retina = transforms['retina']
 
             if self.retina == True:
@@ -324,7 +324,8 @@ class Dataset(data.Dataset):
                 else:
                     self.retina_size = 64
 
-                if 'location_targets' in transforms:
+                if 'location_targets' in transforms:  #put some targets only on the left or right during training
+                    print('inhere')
                     self.right_targets = transforms['location_targets']['right']
                     self.left_targets = transforms['location_targets']['left']
 
@@ -332,12 +333,12 @@ class Dataset(data.Dataset):
                     self.right_targets = []
                     self.left_targets = []
                 
-                if 'build_retina' in transforms:
+                if 'build_retina' in transforms:   #I'm not sure what this does, perhaps used when imagery creates a new form in the retina
                     self.build_ret = transforms['build_retina']
                 else:
                     self.build_ret = True
 
-            else:
+            else:  #this will just be a cropped representation
                 self.retina_size = None
                 self.right_targets = []
                 self.left_targets = []
