@@ -89,8 +89,6 @@ skip_transforms = {'skip':True, 'colorize':True}
 mnist_dataset = Dataset('emnist', mnist_test_transforms)
 emnist_dataset = Dataset(dataset_name, mnist_transforms) 
 
-#emnist_test_dataset = Dataset('emnist', mnist_test_transforms, train= False)
-#mnist_test_dataset = Dataset(dataset_name, mnist_test_transforms, train= False)
 
 #blocks
 block_dataset = Dataset('square', {'colorize':True, 'retina':True, 'build_retina':False})
@@ -118,7 +116,10 @@ mnist_skip = mnist_skip.get_loader(bs)
 #add colorsquares dataset to training
 vae.to(device)
 
-dataloaders = [train_loader_noSkip, emnist_loader, mnist_skip, test_loader_noSkip, None, block_loader]   #there need to be 6 dataloaders passed in to 
+dataloaders = [train_loader_noSkip, emnist_loader, mnist_skip, test_loader_noSkip, None, block_loader]   #there need to be 6 dataloaders passed in
+
+print(dataloaders)
+
 label_dataloaders = [emnist_loader, emnist_loader, mnist_skip, test_loader_noSkip, None, block_loader]
 SVT_dataloaders = [train_loader_SVT, emnist_loader, mnist_skip, test_loader_noSkip, None, block_loader]
 

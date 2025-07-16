@@ -464,6 +464,7 @@ class Dataset(data.Dataset):
         elif self.name == 'quickdraw':
             image = Image.fromarray(self.dataset[index, :-1].reshape(28, 28))  # image
             target = int(self.dataset[index, -1])  # label
+            #print(target)
 
         elif type(self.dataset) != Image.Image:
             image, target = self.dataset[index]
@@ -472,7 +473,7 @@ class Dataset(data.Dataset):
                 pass
             else:
                 target += self.target_dict[self.name][0]
-
+            
         else:
             image = self.dataset
             target = 1

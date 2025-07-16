@@ -11,6 +11,7 @@ all_images = []
 all_labels = []
 
 # iterate through each class, load, and append
+
 for label, obj in enumerate(object_classes):
     filename = f'full_numpy_bitmap_{obj}.npy'
     filepath = os.path.join(data_dir, filename)
