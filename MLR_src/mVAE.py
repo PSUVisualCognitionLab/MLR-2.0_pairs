@@ -27,6 +27,7 @@ from torchvision import utils
 from torchvision.utils import save_image
 from tqdm import tqdm
 from torchvision import transforms as torch_transforms
+from Training import training_components
 
 from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION
 
@@ -113,7 +114,7 @@ class VAE_CNN(nn.Module):
             # bottle neck part  # Latent vectors mu and sigma
             self.fc35 = nn.Linear(h_dim2, z_dim + 2)  # object
             self.fc36 = nn.Linear(h_dim2, z_dim + 2)
-            self.fc4o = nn.Linear(z_dim + 2, h_dim2)  # object decode... Unclear what this is for
+            self.fc4o = nn.Linear(z_dim + 2, h_dim2)  # object decoder
 
         # decoder part
         self.fc4s = nn.Linear(z_dim, h_dim2)  # shape
@@ -702,56 +703,32 @@ def component_to_grad(comp): # determine gradient for component training
 
 def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels = {}, components = {}, max_iter = 600, checkpoint_folder=None):
     vae.train()
-    train_loader_noSkip, emnist, fmnist_skip, test_loader, sample_loader, block_loader = dataloaders[0], dataloaders[1], dataloaders[2], dataloaders[3], dataloaders[4], dataloaders[5]
-    
-    train_loss = 0
-    dataiter_noSkip = iter(train_loader_noSkip) # the latent space is trained on EMNIST, MNIST, and f-MNIST
-    block_iter = iter(block_loader)
-    if fmnist_skip != None:
-        #dataiter_emnist_skip= iter(emnist_skip) # The skip connection is trained on pairs from EMNIST, MNIST, and f-MNIST composed on top of each other
-        dataiter_fmnist_skip= iter(fmnist_skip)
-    test_iter = iter(test_loader)
-    #sample_iter = iter(sample_loader)
     count = 0
-    loader=tqdm(train_loader_noSkip, total = max_iter)
+    loader=tqdm(dataloaders['mnist'], total = max_iter)
 
-    retinal_loss_train, cropped_loss_train = 0, 0 # loss metrics returned to Training.py
-    #block_data, block_labels = next(block_iter)
-
-    dataiter_emnist = iter(emnist)
+    train_loss, retinal_loss_train, cropped_loss_train = 0, 0, 0 # loss metrics returned to Training.py
 
     for i,j in enumerate(loader):
         count += 1
-        data, batch_labels = next(dataiter_noSkip)
-        data_emnist, batch_labels = next(dataiter_emnist)
-
-        # shuffle in the block dataset
-        #z =5 # random.randint(0,10)
-        #if z <= 1:
-            #data = block_data
         
         optimizer.zero_grad()
         
         # determine which latent or connection is being trained  (shape/color/skip etc)
-        #depending ont he latent that we will train on this iteration, select the appropriate dataloader
+        # depending on the latent that we will train on this iteration, select the appropriate dataloader
         comp_ind = count % len(components)  
         whichdecode_use = components[comp_ind]
-        keepgrad = component_to_grad(whichdecode_use)
+        sample_dataloaders = training_components[components[comp_ind]][0]
+        samples = []
+        for sample_dataloader in sample_dataloaders:
+            sample = next(sample_dataloader)
+            # if the dataloader has retinal=True, take the cropped img for cropped components
+            if whichdecode_use in ['cropped', 'shape', 'color', 'object', 'cropped_object']:
+                sample = sample[1]
 
-        if whichdecode_use == 'skip_cropped':
-            data_skip = next(dataiter_fmnist_skip)
-            r = random.randint(0,1)
-            if r == 1:
-                data = data_skip[0]
-            else:
-                data = data[1]
-        
-        if whichdecode_use in ['cropped', 'shape', 'color']:
-            data = data_emnist[1]
-        elif whichdecode_use in ['object', 'cropped_object']:
-            data = data[1]
-        elif whichdecode_use == 'retinal':
-            data = data_emnist
+            samples += [sample]
+
+        data = torch.cat(samples, 0)
+        keepgrad = component_to_grad(whichdecode_use)        
         
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use, keepgrad)
             
@@ -810,8 +787,9 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         seen_labels = None #update_seen_labels(batch_labels,seen_labels)
 
         if count % int(0.9*max_iter) == 0:
-            test_data, j = next(test_iter)
-            progress_out(vae, test_data[1], checkpoint_folder)
+            #test_data, j = next(test_iter)
+            test_data = next(dataloaders['mnist-map'])
+            progress_out(vae, test_data, checkpoint_folder)
         #elif count % 500 == 0: not for RED GREEN
          #   data = data_noSkip[0][1] + data_skip[0]
           #  progress_out(vae, data, epoch, count, skip= True)
@@ -819,12 +797,12 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         if i == max_iter +1:
             break
 
-    print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, train_loss / len(train_loader_noSkip.dataset)))
+    print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, train_loss))
     
     if return_loss is True:
         # get test losses for cropped and retinal
-        test_data = next(test_iter)
-        test_data = test_data[0]
+        #test_data = next(test_iter)
+        test_data = next(dataloaders['mnist-map'])
 
         test_loss_dict = test_loss(vae, test_data, ['retinal', 'cropped'])
     

@@ -3,7 +3,7 @@ import torch
 from MLR_src.mVAE import train
 import torch.optim as optim
 
-def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, start_epoch = 1, dimensions = []):
+def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use_wandb, start_epoch = 1, dimensions = []):
     if use_wandb is True:
         import wandb
         from MLR_src.wandb_setup import initialize_wandb, log_system_metrics
@@ -11,8 +11,6 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, star
 
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     seen_labels = {}
-    #specifies the order the model latents will be trained
-    components = 3*['shape'] + 3*['color']+ 3*['cropped'] + 3*['skip_cropped'] + ['retinal'] +  3*['object'] + 3*['cropped_object'] + ['retinal_object']
     
     for epoch in range(start_epoch, epoch_count):
         loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components, 600, checkpoint_folder)
