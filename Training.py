@@ -22,13 +22,14 @@ args = parser.parse_args()
 import torch
 import os
 from MLR_src.mVAE import load_checkpoint, vae_builder, load_dimensions
-from torch.utils.data import DataLoader, ConcatDataset
+#from torch.utils.data import DataLoader, ConcatDataset
 from MLR_src.dataset_builder import Dataset
 from MLR_src.train_mVAE import train_mVAE
 from MLR_src.train_labels import train_labelnet
 from MLR_src.train_classifiers import train_classifiers
-from torchvision import datasets, transforms, utils
+#from torchvision import datasets, transforms, utils
 import torch.nn as nn
+from training_constants import training_datasets, training_components
 
 folder_name = args.folder
 #torch.set_default_dtype(torch.float64)
@@ -65,24 +66,7 @@ else:
 bs=100   #batch size for training the main VAE
 SVM_bs = 25000  #batch size for training the spatial vision transformer
 obj_latent_flag = True   #this flag determines whether the VAE has an obj latent space
-training_datasets = {'emnist-map': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True},
-                     'emnist-skip': {'retina':False, 'colorize':True, 'rotate':True, 'scale':True, 'skip': True},
-                     'mnist-map': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True},
-                     'mnist-skip': {'retina':False, 'colorize':True, 'rotate':True, 'scale':True, 'skip': True},
-                     'quickdraw': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True},
-                     'cifar10': {'retina':True, 'rotate':False, 'scale':True},
-                     'square': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True},
-                     'line': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True},
-                     'fashion_mnist': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True}}
 
-training_components = {'shape': [['emnist-map', 'mnist-map'], 3], # shape map, weighted 3 times in training etc
-                       'color': [['emnist-map', 'mnist-map'], 3], # color map
-                       'object': [['quickdraw'], 3], # map for quickdraw
-                       'cropped': [['emnist-map', 'mnist-map'], 3], # shape and color recon
-                       'cropped_object': [['quickdraw'], 3], # object and color recon
-                       'skip_cropped': [['emnist-skip', 'mnist-skip'], 1], # mnist/emnist skip connection
-                       'retinal': [['emnist-map', 'mnist-map'], 1], # retinal, scale, location
-                       'retinal_object': [['quickdraw'], 1]} # retinal, scale, location, object
 
 if load is True:
     vae = load_checkpoint(f'{checkpoint_folder_path}/{args.checkpoint_name}', d, obj_latent_flag)
@@ -102,7 +86,7 @@ weighted_components = [] #specifies the order/frequency the model latents will b
 # init dataloaders for mVAE, label training
 for component in args.components:
     weight = training_components[component][1]
-    components += [component] * weight
+    weighted_components += [component] * weight
     for dataset in training_components[component][0]:
         dataset_name = dataset.split('-')[0]
         dataset_transforms = training_datasets[dataset]
@@ -118,7 +102,7 @@ for component in args.components:
 
 vae.to(device)
 
-print(dataloaders.keys())
+#print(dataloaders.keys())
 
 print(f'Training: {args.train_list}')
 epoch_count = args.end_ep
@@ -126,7 +110,7 @@ epoch_count = args.end_ep
 #train mVAE
 if 'mVAE' in args.train_list:
     print('Training: mVAE')
-    train_mVAE(dataloaders, components, vae, epoch_count, folder_name, args.wandb, args.start_ep, dimensions)
+    train_mVAE(dataloaders, weighted_components, vae, epoch_count, folder_name, args.wandb, args.start_ep, dimensions)
 
 #train_labels
 if 'label_net' in args.train_list:

@@ -27,7 +27,7 @@ from torchvision import utils
 from torchvision.utils import save_image
 from tqdm import tqdm
 from torchvision import transforms as torch_transforms
-from Training import training_components
+from training_constants import training_components
 
 from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION
 
@@ -704,7 +704,7 @@ def component_to_grad(comp): # determine gradient for component training
 def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels = {}, components = {}, max_iter = 600, checkpoint_folder=None):
     vae.train()
     count = 0
-    loader=tqdm(dataloaders['mnist'], total = max_iter)
+    loader=tqdm(dataloaders['mnist-map'], total = max_iter)
 
     train_loss, retinal_loss_train, cropped_loss_train = 0, 0, 0 # loss metrics returned to Training.py
 
@@ -719,11 +719,15 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         whichdecode_use = components[comp_ind]
         sample_dataloaders = training_components[components[comp_ind]][0]
         samples = []
-        for sample_dataloader in sample_dataloaders:
-            sample = next(sample_dataloader)
+        for sample_dataloader_name in sample_dataloaders:
+            sample_dataloader = dataloaders[sample_dataloader_name]
+            sample, labels = next(sample_dataloader)
             # if the dataloader has retinal=True, take the cropped img for cropped components
-            if whichdecode_use in ['cropped', 'shape', 'color', 'object', 'cropped_object']:
-                sample = sample[1]
+            if type(sample) == list:
+                if whichdecode_use in ['cropped', 'shape', 'color', 'object', 'cropped_object']:
+                    sample = sample[1]
+                else:
+                    sample = sample[0]
 
             samples += [sample]
 
