@@ -8,6 +8,7 @@ parser.add_argument("--load_prev", type=bool, default=False, help="Begin trainin
 parser.add_argument("--cuda_device", type=int, default=1, help="Which cuda device to use")
 parser.add_argument("--cuda", type=bool, default=True, help="Cuda availability")
 parser.add_argument("--folder", type=str, default='test', help="Where to store checkpoints in checkpoints/")
+# VVV defines which components are trained
 parser.add_argument("--components", nargs='+', type=str, default=['shape', 'color', 'retinal', 'object', 'skip_cropped', 'retinal_object'], help="Which components to train")
 parser.add_argument("--z_dim", type=int, default=8, help="Size of the mVAE latent dimension")
 parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label_net', 'SVM'], help="Which models to train")

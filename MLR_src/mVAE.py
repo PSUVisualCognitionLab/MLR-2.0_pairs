@@ -488,12 +488,19 @@ class VAE_CNN(nn.Module):
         else:
             encoder = self.encoder
 
-        if type(x) == list or type(x) == tuple:    #passing in a cropped+ location as input
-            x = x[0].cuda()
+        if 'retinal' in whichdecode:    #passing in a cropped+ location as input
+            if type(x) == list or type(x) == tuple:
+                x = x[0].cuda()
+            else:
+                x = x.cuda()
+            
             x, theta = self.stn_encode(x)
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x)
         else:  #passing in just cropped image
-            x = x.cuda()
+            if type(x) == list or type(x) == tuple:
+                x = x[1].cuda()
+            else:
+                x = x.cuda()
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x)
 
         # the maps that are used in the training process.. the others are detached to zero out those gradients
@@ -531,7 +538,7 @@ class VAE_CNN(nn.Module):
             output = self.decoder_cropped_object(z_shape, z_color, 0)
         elif (whichdecode == 'retinal_object'):
             output = self.decoder_retinal_object(z_shape,z_color, theta)
-
+        
         return output, mu_color, log_var_color, mu_shape, log_var_shape
 
 # function to build a model instance
@@ -553,7 +560,10 @@ def loss_function(recon_x, x, crop_x):
     if crop_x is not None:
         x = place_crop(crop_x,x[2].clone())
     else:
-        x=x[0].clone()
+        if type(x) == list or type(x) == tuple:
+            x = x[0].clone()
+        else:
+            x = x.clone()
     x = x.cuda()
     BCE = F.binary_cross_entropy(recon_x.view(-1, 3, retina_size, retina_size), x.view(-1, 3, retina_size, retina_size), reduction='sum')
     return BCE
@@ -723,6 +733,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             sample_dataloader = dataloaders[sample_dataloader_name]
             sample, labels = next(sample_dataloader)
             # if the dataloader has retinal=True, take the cropped img for cropped components
+            #print(f'data: {sample_dataloader_name} decode: {whichdecode_use}')
             if type(sample) == list:
                 if whichdecode_use in ['cropped', 'shape', 'color', 'object', 'cropped_object']:
                     sample = sample[1]
@@ -732,6 +743,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             samples += [sample]
 
         data = torch.cat(samples, 0)
+        #print(data.size())
         keepgrad = component_to_grad(whichdecode_use)        
         
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use, keepgrad)
@@ -792,8 +804,8 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
 
         if count % int(0.9*max_iter) == 0:
             #test_data, j = next(test_iter)
-            test_data = next(dataloaders['mnist-map'])
-            progress_out(vae, test_data, checkpoint_folder)
+            test_data, labels = next(dataloaders['mnist-map'])
+            progress_out(vae, test_data[1], checkpoint_folder)
         #elif count % 500 == 0: not for RED GREEN
          #   data = data_noSkip[0][1] + data_skip[0]
           #  progress_out(vae, data, epoch, count, skip= True)
@@ -806,7 +818,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
     if return_loss is True:
         # get test losses for cropped and retinal
         #test_data = next(test_iter)
-        test_data = next(dataloaders['mnist-map'])
+        test_data, test_labels = next(dataloaders['mnist-map'])
 
         test_loss_dict = test_loss(vae, test_data, ['retinal', 'cropped'])
     
