@@ -749,7 +749,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use, keepgrad)
             
-        if whichdecode_use == 'shape':  # shape
+        if whichdecode_use == 'shape':  # emnist and mnist shape
             loss = loss_function_shape(recon_batch, data, mu_shape, log_var_shape)
 
         elif whichdecode_use == 'color': # color
@@ -775,13 +775,13 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         elif whichdecode_use == 'skip_cropped': # skip training
             loss = loss_function_crop(recon_batch, data)
 
-        elif whichdecode_use == 'object': # object training
+        elif whichdecode_use == 'object': # quickdraw object training
             loss = loss_function_shape(recon_batch, data, mu_shape, log_var_shape)
         
-        elif whichdecode_use == 'cropped_object': # cropped object training
+        elif whichdecode_use == 'cropped_object': # cropped quickdraw object training
             loss = loss_function_crop(recon_batch, data)
         
-        elif whichdecode_use == 'retinal_object': # retinal object training
+        elif whichdecode_use == 'retinal_object': # retinal quickdraw object training
             loss = loss_function(recon_batch['recon'], data, None)
             #demonstrate the quality of reconstructions of objects at specific locations and scales and colors on the retina
             if count >= 0.9*max_iter:
