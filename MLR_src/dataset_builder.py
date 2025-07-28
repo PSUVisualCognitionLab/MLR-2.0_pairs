@@ -311,7 +311,6 @@ class Dataset(data.Dataset):
 
         else:
             raise ValueError('invalid dataset input type')
-        print(transforms)
         # Use if the stimulus will put a stimulus into the retina
         if 'retina' in transforms: 
             self.retina = transforms['retina']

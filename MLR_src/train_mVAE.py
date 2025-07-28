@@ -2,6 +2,7 @@
 import torch
 from MLR_src.mVAE import train
 import torch.optim as optim
+from itertools import cycle
 
 def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use_wandb, start_epoch = 1, dimensions = []):
     if use_wandb is True:
@@ -11,9 +12,13 @@ def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use
 
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     seen_labels = {}
-    
+        
+
     for epoch in range(start_epoch, epoch_count):
+        
+
         loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components, 600, checkpoint_folder)
+
 
         if use_wandb is True:   #this connects with weights and biases.. a website that tracks loss data over time.  Currently inoperable due to version conflict
             wandb.log({

@@ -31,6 +31,7 @@ from MLR_src.train_classifiers import train_classifiers
 #from torchvision import datasets, transforms, utils
 import torch.nn as nn
 from training_constants import training_datasets, training_components
+from itertools import cycle
 
 folder_name = args.folder
 #torch.set_default_dtype(torch.float64)
@@ -70,7 +71,7 @@ obj_latent_flag = True   #this flag determines whether the VAE has an obj latent
 
 
 if load is True:
-    vae = load_checkpoint(f'{checkpoint_folder_path}/{args.checkpoint_name}', d, obj_latent_flag)
+    vae = load_checkpoint(f'{checkpoint_folder_path}{args.checkpoint_name}', d, obj_latent_flag)
     dimensions = load_dimensions(f'{checkpoint_folder_path}/{args.checkpoint_name}', d)
     print('checkpoint loaded')     
 
@@ -84,22 +85,26 @@ dataloaders = {}
 SVM_dataloaders = {}
 weighted_components = [] #specifies the order/frequency the model latents will be trained
 
-# init dataloaders for mVAE, label training
+
+# init dataloaders for mVAE and label training by making sure the data sets for each model component are added
+# model components are the latent spaces, like shape, color, etc   Each component also has a specific list of transforms
+
 for component in args.components:
     weight = training_components[component][1]
     weighted_components += [component] * weight
     for dataset in training_components[component][0]:
         dataset_name = dataset.split('-')[0]
-        dataset_transforms = training_datasets[dataset]
-        dataloader = Dataset(dataset_name, dataset_transforms).get_loader(bs//len(training_components[component][0]))
+        dataset_transforms = training_datasets[dataset]  #load the transforms for this dataset
+        dataloader = cycle(Dataset(dataset_name, dataset_transforms).get_loader(bs//len(training_components[component][0])))
         dataloaders[dataset] = iter(dataloader)
 
 # init dataloaders for SVM training
 for component in args.components:
     for dataset in training_components[component][0]:
         dataset_name = dataset.split('-')[0]
-        dataset_transforms = training_datasets[dataset]
-        SVM_dataloaders[dataset] = Dataset(dataset_name, dataset_transforms).get_loader(SVM_bs)
+        dataset_transforms = training_datasets[dataset]   #load the transforms for this dataset
+        SVM_dataloaders[dataset] = cycle(Dataset(dataset_name, dataset_transforms).get_loader(SVM_bs))
+
 
 vae.to(device)
 

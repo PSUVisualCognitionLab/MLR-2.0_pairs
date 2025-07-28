@@ -712,11 +712,13 @@ def component_to_grad(comp): # determine gradient for component training
         raise Exception(f'Invalid component: {comp}')
 
 def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels = {}, components = {}, max_iter = 600, checkpoint_folder=None):
+    #components is the list of model latents that will be trained, and these are weighted by repeating some of them.  
+    #   So for example repeating 'shape' 3 times for every instance of 'skip_cropped' 
     vae.train()
     count = 0
     loader=tqdm(dataloaders['mnist-map'], total = max_iter)
-
     train_loss, retinal_loss_train, cropped_loss_train = 0, 0, 0 # loss metrics returned to Training.py
+
 
     for i,j in enumerate(loader):
         count += 1
@@ -725,9 +727,9 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         
         # determine which latent or connection is being trained  (shape/color/skip etc)
         # depending on the latent that we will train on this iteration, select the appropriate dataloader
-        comp_ind = count % len(components)  
-        whichdecode_use = components[comp_ind]
-        sample_dataloaders = training_components[components[comp_ind]][0]
+        comp_ind = count % len(components)  #step through the whole list of components
+        whichdecode_use = components[comp_ind]  #which particular latent/decoder to use for this component 
+        sample_dataloaders = training_components[components[comp_ind]][0]  #which dataloader does this particular component need?
         samples = []
         for sample_dataloader_name in sample_dataloaders:
             sample_dataloader = dataloaders[sample_dataloader_name]
@@ -743,7 +745,6 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             samples += [sample]
 
         data = torch.cat(samples, 0)
-        #print(data.size())
         keepgrad = component_to_grad(whichdecode_use)        
         
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use, keepgrad)
@@ -806,6 +807,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             #test_data, j = next(test_iter)
             test_data, labels = next(dataloaders['mnist-map'])
             progress_out(vae, test_data[1], checkpoint_folder)
+
         #elif count % 500 == 0: not for RED GREEN
          #   data = data_noSkip[0][1] + data_skip[0]
           #  progress_out(vae, data, epoch, count, skip= True)
