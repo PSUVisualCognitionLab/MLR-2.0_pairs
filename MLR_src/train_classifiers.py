@@ -4,7 +4,8 @@ from joblib import dump
 
 def train_classifiers(dataloaders, vae, checkpoint_folder):
     print('training shape classifiers')
-    classifier_shape_train(vae, 'cropped', dataloaders[0])
+    #print(dataloaders)
+    classifier_shape_train(vae, 'cropped', dataloaders['quickdraw'])
     #dump(clf_sc, f'checkpoints/{checkpoint_folder}/sc.joblib')
     dump(clf_ss, f'checkpoints/{checkpoint_folder}/ss.joblib')
 
