@@ -5,7 +5,8 @@ from joblib import dump
 def train_classifiers(dataloaders, vae, checkpoint_folder):
     print('training shape classifiers')
     #print(dataloaders)
-    classifier_shape_train(vae, 'cropped', dataloaders['quickdraw'])
+    classifier_shape_train(vae, 'object', dataloaders['quickdraw'])
+    
     #dump(clf_sc, f'checkpoints/{checkpoint_folder}/sc.joblib')
     dump(clf_ss, f'checkpoints/{checkpoint_folder}/ss.joblib')
 
@@ -17,7 +18,7 @@ def train_classifiers(dataloaders, vae, checkpoint_folder):
     print('training color classifiers')
     classifier_color_train(vae, 'cropped', dataloaders['quickdraw'])
     dump(clf_cc, f'checkpoints/{checkpoint_folder}/cc.joblib')
-    #dump(clf_cs, f'{folder_path}/cs.joblib')
+    
 
     pred_cc, pred_cs, CCreport, CSreport = classifier_color_test(vae, 'cropped', clf_cc, clf_cs, dataloaders['quickdraw'],1)
     print('accuracy:')

@@ -159,7 +159,7 @@ class VAE_CNN(nn.Module):
         self.shape_scale = 1 #1.9
         self.color_scale = 1 #2
 
-    def construct_theta(self, z_where):
+    def construct_theta(self, z_where):   #used for the spatial transformer
         # Take a batch of three-vectors, and massages them into a batch of
         # 2x3 matrices with elements like so:
         # [s,x,y] -> [[s,0,x],
@@ -180,7 +180,7 @@ class VAE_CNN(nn.Module):
        
         return out
 
-    def invert_theta(self, z_where):
+    def invert_theta(self, z_where):   #used for the spatial transformer inverse
         # Take a batch of z_where vectors, and compute their "inverse".
         # That is, for each row compute:
         # [s,x,y] -> [1/s,-x/s,-y/s]
@@ -218,7 +218,7 @@ class VAE_CNN(nn.Module):
 
         return retina
     
-    def encoder(self, x, hskip = None):   #I think used for MNIST and EMNIST
+    def encoder(self, x, hskip = None):   # used for MNIST and EMNIST
         if hskip is not None: # for reprocessing l1 through bottleneck,  note that x is ignored 
             h = hskip.view(-1, 16, imgsize, imgsize)
             h = self.relu(self.bn2(self.conv2(h)))        
@@ -238,7 +238,7 @@ class VAE_CNN(nn.Module):
 
         return self.fc31(h), self.fc32(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
 
-    def encoder_object(self, x, hskip = None):    #used for Quickdraw images  (with color)  (but I think it's identical to encoder)
+    def encoder_object(self, x, hskip = None):    #used for Quickdraw images  (with color)  (identical to encoder except for the return values)
         if hskip is not None: # for reprocessing l1 through bottleneck,  note that x is ignored
             h = hskip.view(-1, 16, imgsize, imgsize)
             h = self.relu(self.bn2(self.conv2(h)))        
@@ -260,7 +260,7 @@ class VAE_CNN(nn.Module):
 
     def activations(self, x, retinal=False, hskip = None, which_encode='digit'): # returns shape, color, scale, location, and skip(l1) latent activations
         if which_encode == 'digit':   
-            encoder = self.encoder     #I think both of these functions are the same
+            encoder = self.encoder     #Note that we have two different latents for shape and object (quickdraw)
         else:
             encoder = self.encoder_object
         

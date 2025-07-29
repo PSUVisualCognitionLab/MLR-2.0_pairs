@@ -8,6 +8,7 @@ from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION
 import matplotlib.pyplot as plt
 
 # defining the classifiers
+clf = svm.SVC(C=10, gamma='scale', kernel='rbf', probability= True)  # define the classifier for shape
 clf_ss = svm.SVC(C=10, gamma='scale', kernel='rbf', probability= True)  # define the classifier for shape
 clf_sc = svm.SVC(C=10, gamma='scale', kernel='rbf')  # classify shape map against color labels
 clf_cc = svm.SVC(C=10, gamma='scale', kernel='rbf')  # define the classifier for color
@@ -15,26 +16,30 @@ clf_cs = svm.SVC(C=10, gamma='scale', kernel='rbf')  # classify color map agains
 
 vals = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 
-#training the shape map on shape labels and color labels
-def classifier_shape_train(vae, whichdecode_use, train_dataset):
+#training a classifier using shape map input to predict shape labels and also color labels  (Currently 1 batch of 25k)
+def classifier_shape_train(vae, whichcomponent, train_dataset):
     vae.eval()
+
+    passin = 'digit'   #temporary until we fix this in activations
+    labelindex = 0
+ 
+    if(whichcomponent== 'object'):
+        passin = 'object'
+        whichcomponent = 'shape' #used to fix a hack in activations where the same label is used for objects and shapes
+        
+    if(whichcomponent== 'color'):
+        labelindex = 1   
     device = next(vae.parameters()).device
     with torch.no_grad():
         data, labels = next(iter(train_dataset))
         data = data[1]
-        train_shapelabels=labels[0].clone()
-        train_colorlabels=labels[1].clone()
-        print(train_shapelabels[0:10])
+        train_labels=labels[labelindex].clone()
         utils.save_image(data[0:10],'train_sample.png')
-
-        data = data.to(device)
-        activations = vae.activations(data, False, None, 'object')
-        z_shape = activations['shape'].to(device)
-        print('training shape bottleneck against color labels sc')
-        clf_sc.fit(z_shape.cpu().numpy(), train_colorlabels.cpu())
-
-        print('training shape bottleneck against shape labels ss')
-        clf_ss.fit(z_shape.cpu().numpy(), train_shapelabels)
+        data = data.to(device)        
+        activations = vae.activations(data, False, None, passin)
+        z = activations[whichcomponent].to(device)
+        clf.fit(z.cpu().numpy(), train_labels.cpu())
+    return clf
 
 #testing the shape classifier (one image at a time)
 def classifier_shape_test(vae, whichdecode_use, clf_ss, clf_sc, test_dataset, confusion_mat=0):
@@ -60,7 +65,7 @@ def classifier_shape_test(vae, whichdecode_use, clf_ss, clf_sc, test_dataset, co
             cm = confusion_matrix(test_shapelabels, pred_ss)
             # Plot the confusion matrix
             plt.imshow(cm, cmap="Greys")
-            plt.title("Confusion Matrix")
+            plt.title("Confusion Matrix for shape from shape map")
             plt.xlabel("Predicted")
             plt.ylabel("True")
             plt.colorbar()
