@@ -628,7 +628,7 @@ def loss_function_scale(recon_x, x, mu, log_var):
     return BCE + KLD
 
 # test recreate img with different features
-def progress_out(vae, data, checkpoint_folder):
+def progress_out(vae, data, checkpoint_folder,name):
     device = next(vae.parameters()).device 
     sample_size = 25
     vae.eval()
@@ -643,7 +643,7 @@ def progress_out(vae, data, checkpoint_folder):
     utils.save_image(
             torch.cat([sample.view(sample_size, 3, imgsize, imgsize)[:25], recon.view(sample_size, 3, imgsize, imgsize)[:25], skip.view(sample_size, 3, imgsize, imgsize)[:25],
                        shape.view(sample_size, 3, imgsize, imgsize)[:25], color.view(sample_size, 3, imgsize, imgsize)[:25]], 0),
-            f'training_samples/{checkpoint_folder}/cropped_sample.png',
+            f'training_samples/{checkpoint_folder}/cropped_sample{name}.png',
             nrow=sample_size, normalize=False)
 
 def test_loss(vae, test_data, whichdecode = []):
@@ -805,8 +805,20 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
 
         if count % int(0.9*max_iter) == 0:
             #test_data, j = next(test_iter)
-            test_data, labels = next(dataloaders['mnist-map'])
-            progress_out(vae, test_data[1], checkpoint_folder)
+            try:
+            
+                test_data, labels = next(dataloaders['emnist-map'])
+                progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(count))
+            except:
+                pass
+
+
+            try:
+                test_data, labels = next(dataloaders['quickdraw'])
+                progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(count))
+            except:
+                pass
+            
 
         #elif count % 500 == 0: not for RED GREEN
          #   data = data_noSkip[0][1] + data_skip[0]

@@ -9,11 +9,20 @@ from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION
 import matplotlib.pyplot as plt
 from joblib import dump
 
+'''
+dataset options: 
+emnist-map
+mnist-map
+emnist-skip
+quickdraw
+mnist-skip
+'''
+
 def train_classifiers(dataloaders, vae, checkpoint_folder):
     print('training object data on color map using color labels')   #this should be high
-    clf_occ = classifier_train(vae, 'object', dataloaders['quickdraw'], 'color')
+    clf_occ = classifier_train(vae, 'color', dataloaders['quickdraw'], 'color')
     dump(clf_occ, f'checkpoints/{checkpoint_folder}/occ.joblib')
-    pred_occ,  coreport = classifier_test(vae, 'object', clf_occ, dataloaders['quickdraw'],'quickdraw','color', 1)
+    pred_occ,  coreport = classifier_test(vae, 'color', clf_occ, dataloaders['quickdraw'],'quickdraw','color', 1)
 
     print('training object data on object map using object labels')  #this should be high
     clf_ooo = classifier_train(vae, 'object', dataloaders['quickdraw'],'object')
@@ -26,10 +35,6 @@ def train_classifiers(dataloaders, vae, checkpoint_folder):
     pred_oco,  coreport = classifier_test(vae, 'color', clf_oco, dataloaders['quickdraw'],'quickdraw','object' ,1)
 
 
-
-
-
-
 def classifier_train(vae, whichcomponent, train_dataset,whichlabel):
     #trains an svm using a given dataset, from a given latent space (whichcomponent) and datalabel
     #print(' Training'+ whichlabel + ' classification from the map ' + whichcomponent + ' using dataset' + dataname)
@@ -39,7 +44,7 @@ def classifier_train(vae, whichcomponent, train_dataset,whichlabel):
     passin = 'digit'   #temporary until we fix this in activations
    
     labelindex = 0  #shape by default
-    if(whichlabel== 'color'):
+    if(whichlabel== 'color'):  
         labelindex = 1   
  
     if(whichcomponent== 'object'):
@@ -53,7 +58,7 @@ def classifier_train(vae, whichcomponent, train_dataset,whichlabel):
         train_labels=labels[labelindex].clone()   #0 for shape/object, 1 for color
         utils.save_image(data[0:10],'train_sample.png')
         data = data.to(device)        
-        activations = vae.activations(data, False, None, passin)
+        activations = vae.activations(data, False, None, passin)  #pass in determines whether object or digit map is used for activations
         z = activations[whichcomponent].to(device)
         clf.fit(z.cpu().numpy(), train_labels.cpu())
     return clf
