@@ -716,7 +716,14 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
     #   So for example repeating 'shape' 3 times for every instance of 'skip_cropped' 
     vae.train()
     count = 0
-    loader=tqdm(dataloaders['mnist-map'], total = max_iter)
+
+    try:
+        loader=tqdm(dataloaders['mnist-map'], total = max_iter)
+    except:
+        loader=tqdm(dataloaders['quickdraw'], total = max_iter)
+        
+    
+    
     train_loss, retinal_loss_train, cropped_loss_train = 0, 0, 0 # loss metrics returned to Training.py
 
 
@@ -808,14 +815,14 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             try:
             
                 test_data, labels = next(dataloaders['emnist-map'])
-                progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(count))
+                progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))
             except:
                 pass
 
 
             try:
                 test_data, labels = next(dataloaders['quickdraw'])
-                progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(count))
+                progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch))
             except:
                 pass
             
