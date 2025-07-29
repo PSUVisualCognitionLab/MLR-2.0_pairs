@@ -1,4 +1,10 @@
 # prerequisites
+
+import torch
+'''
+
+This whole file is deprecated now, these functions have been folded into generic versions in train_classifiers
+
 import torch
 import numpy as np
 from sklearn import svm
@@ -186,3 +192,5 @@ def classifier_colormap_test_imgs(color, shapelabels, colorlabels,numImg, clf_co
             print(classification_report(shapelabels[0:numImg], pred_csimg))
 
         return pred_ccimg, pred_csimg, CCreport, CSreport
+
+'''

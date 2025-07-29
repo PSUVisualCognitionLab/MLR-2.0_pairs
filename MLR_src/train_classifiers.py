@@ -10,36 +10,42 @@ import matplotlib.pyplot as plt
 from joblib import dump
 
 def train_classifiers(dataloaders, vae, checkpoint_folder):
-    print('training object on object map')
-    clf_oo = classifier_train(vae, 'object', dataloaders['quickdraw'])
-    dump(clf_oo, f'checkpoints/{checkpoint_folder}/oo.joblib')
-    pred_oo,  OOreport = classifier_test(vae, 'object', clf_oo, dataloaders['quickdraw'],'quickdraw', 1)
+    print('training object data on color map using color labels')   #this should be high
+    clf_occ = classifier_train(vae, 'object', dataloaders['quickdraw'], 'color')
+    dump(clf_occ, f'checkpoints/{checkpoint_folder}/occ.joblib')
+    pred_occ,  coreport = classifier_test(vae, 'object', clf_occ, dataloaders['quickdraw'],'quickdraw','color', 1)
 
-    print('training object on color map')
-    clf_co = classifier_train(vae, 'color', dataloaders['quickdraw'])
-    dump(clf_co, f'checkpoints/{checkpoint_folder}/co.joblib')
-    pred_co,  coreport = classifier_test(vae, 'color', clf_co, dataloaders['quickdraw'],'quickdraw', 1)
+    print('training object data on object map using object labels')  #this should be high
+    clf_ooo = classifier_train(vae, 'object', dataloaders['quickdraw'],'object')
+    dump(clf_ooo, f'checkpoints/{checkpoint_folder}/ooo.joblib')
+    pred_ooo,  oooreport = classifier_test(vae, 'object', clf_ooo, dataloaders['quickdraw'],'quickdraw','object', 1)
 
-    print('training object on color map')
-    clf_co = classifier_train(vae, 'color', dataloaders['quickdraw'])
-    dump(clf_co, f'checkpoints/{checkpoint_folder}/co.joblib')
-    pred_co,  coreport = classifier_test(vae, 'color', clf_co, dataloaders['quickdraw'],'quickdraw', 1)
-
-
+    print('training object data on color map using object labels')   #this should be low but above chance
+    clf_oco = classifier_train(vae, 'color', dataloaders['quickdraw'],'object')
+    dump(clf_oco, f'checkpoints/{checkpoint_folder}/oco.joblib')
+    pred_oco,  coreport = classifier_test(vae, 'color', clf_oco, dataloaders['quickdraw'],'quickdraw','object' ,1)
 
 
-def classifier_train(vae, whichcomponent, train_dataset):
+
+
+
+
+def classifier_train(vae, whichcomponent, train_dataset,whichlabel):
+    #trains an svm using a given dataset, from a given latent space (whichcomponent) and datalabel
+    #print(' Training'+ whichlabel + ' classification from the map ' + whichcomponent + ' using dataset' + dataname)
+
     vae.eval()
     clf = svm.SVC(C=10, gamma='scale', kernel='rbf', probability= True)  # define the classifier for shape
     passin = 'digit'   #temporary until we fix this in activations
-    labelindex = 0
+   
+    labelindex = 0  #shape by default
+    if(whichlabel== 'color'):
+        labelindex = 1   
  
     if(whichcomponent== 'object'):
         passin = 'object'
         whichcomponent = 'shape' #used to fix a hack in activations where the same label is used for objects and shapes
         
-    if(whichcomponent== 'color'):
-        labelindex = 1   
     device = next(vae.parameters()).device
     with torch.no_grad():
         data, labels = next(iter(train_dataset))
@@ -52,12 +58,14 @@ def classifier_train(vae, whichcomponent, train_dataset):
         clf.fit(z.cpu().numpy(), train_labels.cpu())
     return clf
 
-def classifier_test(vae, whichcomponent, clf, test_dataset, dataname,confusion_mat=0):
+def classifier_test(vae, whichcomponent, clf, test_dataset, dataname,whichlabel,verbose=0):
     vals = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
     vae.eval()
     device = next(vae.parameters()).device
     passin = 'digit'   #temporary until we fix this in activations
-    labelindex = 0
+    labelindex = 0  #shape by default
+    if(whichlabel== 'color'):
+        labelindex = 1  
  
     if(whichcomponent== 'object'):
         passin = 'object'
@@ -77,7 +85,7 @@ def classifier_test(vae, whichcomponent, clf, test_dataset, dataname,confusion_m
 
         report = accuracy_score(pred,test_labels)#torch.eq(test_shapelabels.cpu(), pred_ss).sum().float() / len(pred_ss)
      
-        if confusion_mat == 1:
+        if verbose == 1:
             cm = confusion_matrix(test_labels, pred)
             # Plot the confusion matrix
             '''
@@ -93,7 +101,7 @@ def classifier_test(vae, whichcomponent, clf, test_dataset, dataname,confusion_m
             plt.show()
             '''
 
-            print('----**********------- '+ dataname+ ' classification from ' + whichcomponent)
+            print('test accuracy '+ whichlabel + ' classification from the map ' + whichcomponent + ' using dataset' + dataname)
             print(confusion_matrix(test_labels, pred))
             print(classification_report(test_labels, pred))
             print('accuracy:')
