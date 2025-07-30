@@ -90,6 +90,7 @@ vae_type_flag = 'CNN' # must be CNN or FC,  But FC is deprecated at this point
 
 class VAE_CNN(nn.Module):
     def __init__(self, x_dim, h_dim1, h_dim2, z_dim, draw_dim = False):
+        print('dimensions h_dim1 '+ str(h_dim1)+ 'hdim2 '+str(h_dim2) +'zdim '+str(z_dim)+'drawdim '+str(draw_dim))
         super(VAE_CNN, self).__init__()
         # encoder part
         self.z_dim = z_dim
@@ -112,9 +113,9 @@ class VAE_CNN(nn.Module):
 
         if draw_dim is True:  #used for quickdraw dataset
             # bottle neck part  # Latent vectors mu and sigma
-            self.fc35 = nn.Linear(h_dim2, z_dim + 2)  # object
-            self.fc36 = nn.Linear(h_dim2, z_dim + 2)
-            self.fc4o = nn.Linear(z_dim + 2, h_dim2)  # object decoder
+            self.fc35 = nn.Linear(h_dim2, z_dim) # object
+            self.fc36 = nn.Linear(h_dim2, z_dim)
+            self.fc4o = nn.Linear(z_dim, h_dim2)  # object decoder
 
         # decoder part
         self.fc4s = nn.Linear(z_dim, h_dim2)  # shape
@@ -255,6 +256,7 @@ class VAE_CNN(nn.Module):
             h = self.relu(self.bn4(self.conv4(h)))
             h = h.view(-1,int(imgsize / 4) * int(imgsize / 4)*16)
             h = self.relu(self.fc_bn2(self.fc2(h)))
+#        return self.fc31(h), self.fc32(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
 
         return self.fc35(h), self.fc36(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
 
@@ -814,7 +816,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         loader.set_description((f'epoch: {epoch}; mse: {loss.item():.5f};'))
         seen_labels = None #update_seen_labels(batch_labels,seen_labels)
 
-        if count % int(0.2*max_iter) == 0:
+        if count % int(0.9*max_iter) == 0:
             #test_data, j = next(test_iter)
             try:
             
