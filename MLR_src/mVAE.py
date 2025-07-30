@@ -257,14 +257,15 @@ class VAE_CNN(nn.Module):
             h = h.view(-1,int(imgsize / 4) * int(imgsize / 4)*16)
             h = self.relu(self.fc_bn2(self.fc2(h)))
 #        return self.fc31(h), self.fc32(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
-
         return self.fc35(h), self.fc36(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
 
-    def activations(self, x, retinal=False, hskip = None, which_encode='digit'): # returns shape, color, scale, location, and skip(l1) latent activations
+    def activations(self, x, retinal=False, hskip = None, which_encode='digit',flag = False): # returns shape, color, scale, location, and skip(l1) latent activations
         if which_encode == 'digit':   
             encoder = self.encoder     #Note that we have two different latents for shape and object (quickdraw)
         else:
             encoder = self.encoder_object
+            if(flag):
+                print('went into the object encoder')
         
         if hskip is not None:   #skip connection activation  (not sure what latent this is )
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x, hskip)
@@ -629,16 +630,29 @@ def loss_function_scale(recon_x, x, mu, log_var):
     KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
     return BCE + KLD
 
+
 # test recreate img with different features
 def progress_out(vae, data, checkpoint_folder,name):
     device = next(vae.parameters()).device 
     sample_size = 25
     vae.eval()
     sample = data[:sample_size].to(device)   #the actual image
-    activations = vae.activations(sample, False)   #get the activations from this image 
-    recon = vae.decoder_cropped(activations['shape'],activations['color'])   #combine the shape and color maps to reconstructions
-    skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
-    shape = vae.decoder_shape(activations['shape'], 0, 0)                   # The shape reconstruction alone
+    if('quickdraw' in name):
+        print('outputing quickdraw')
+        activations = vae.activations(sample, False,None,'object',True)   #get the activations from this image 
+        skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
+    
+        shape = vae.decoder_shape(activations['shape'], 0, 0)                   # The shape reconstruction alone
+        recon = vae.decoder_cropped_object(activations['shape'],activations['color'])   #combine the shape and color maps to reconstructions
+    
+    else:
+        print('outputting digt/letter shape map')
+        activations = vae.activations(sample, False)   #get the activations from this image 
+        skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
+    
+        shape = vae.decoder_shape(activations['shape'], 0, 0)                   # The shape reconstruction alone
+        recon = vae.decoder_cropped(activations['shape'],activations['color'])   #combine the shape and color maps to reconstructions
+    
     color = vae.decoder_color(0, activations['color'], 0)                   #the color alone
     vae.train()
      
@@ -823,13 +837,14 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
                 test_data, labels = next(dataloaders['emnist-map'])
                 progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))
             except:
+                print('failed1')
                 pass
-
-
             try:
                 test_data, labels = next(dataloaders['quickdraw'])
                 progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch))
             except:
+                print('failed2')
+                
                 pass
 
 
