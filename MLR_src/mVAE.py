@@ -678,7 +678,7 @@ def place_crop(crop_data,loc): # retina placement on GPU for training
     #resize = torch_transforms.Resize((28, 28))
     #crop_data = resize(torch_transforms.functional.to_pil_image(crop_data))
     #crop_data = torch_transforms.ToTensor(crop_data)
-    print(crop_data.size())
+    #print(crop_data.size())
     b_dim = crop_data.size(0)
     out_retina = torch.zeros(b_dim,3,retina_size,retina_size).cuda()
     for i in range(len(out_retina)):
@@ -717,17 +717,18 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
     vae.train()
     count = 0
 
-    try:
+    if('mnist-map' in dataloaders):
         loader=tqdm(dataloaders['mnist-map'], total = max_iter)
-    except:
+    elif ('quickdraw' in dataloaders):
         loader=tqdm(dataloaders['quickdraw'], total = max_iter)
+    elif ('emnist-skip' in dataloaders):
+        loader=tqdm(dataloaders['emnist-skip'], total = max_iter)
+    else:
+        print('none of the expected dataloaders available for tqdm initialization ')    
         
-    
-    
     train_loss, retinal_loss_train, cropped_loss_train = 0, 0, 0 # loss metrics returned to Training.py
-
-
-    for i,j in enumerate(loader):
+    
+    for i,j in enumerate(loader):  
         count += 1
         
         optimizer.zero_grad()
@@ -736,22 +737,25 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         # depending on the latent that we will train on this iteration, select the appropriate dataloader
         comp_ind = count % len(components)  #step through the whole list of components
         whichdecode_use = components[comp_ind]  #which particular latent/decoder to use for this component 
-        sample_dataloaders = training_components[components[comp_ind]][0]  #which dataloader does this particular component need?
+        sample_dataloaders = training_components[components[comp_ind]][0]  #which dataloader(s) does this particular component need?
         samples = []
         for sample_dataloader_name in sample_dataloaders:
             sample_dataloader = dataloaders[sample_dataloader_name]
-            sample, labels = next(sample_dataloader)
+            sample, labels = next(sample_dataloader)  #load some data from this particular loader
             # if the dataloader has retinal=True, take the cropped img for cropped components
             #print(f'data: {sample_dataloader_name} decode: {whichdecode_use}')
+            
+
             if type(sample) == list:
                 if whichdecode_use in ['cropped', 'shape', 'color', 'object', 'cropped_object']:
                     sample = sample[1]
                 else:
                     sample = sample[0]
-
             samples += [sample]
 
         data = torch.cat(samples, 0)
+        #print(data.size())
+        #print(whichdecode_use)
         keepgrad = component_to_grad(whichdecode_use)        
         
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use, keepgrad)
@@ -810,7 +814,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         loader.set_description((f'epoch: {epoch}; mse: {loss.item():.5f};'))
         seen_labels = None #update_seen_labels(batch_labels,seen_labels)
 
-        if count % int(0.9*max_iter) == 0:
+        if count % int(0.2*max_iter) == 0:
             #test_data, j = next(test_iter)
             try:
             
@@ -825,7 +829,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
                 progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch))
             except:
                 pass
-            
+
 
         #elif count % 500 == 0: not for RED GREEN
          #   data = data_noSkip[0][1] + data_skip[0]
@@ -839,8 +843,14 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
     if return_loss is True:
         # get test losses for cropped and retinal
         #test_data = next(test_iter)
-        test_data, test_labels = next(dataloaders['mnist-map'])
+        try:
+            test_data, test_labels = next(dataloaders['mnist-map'])
 
-        test_loss_dict = test_loss(vae, test_data, ['retinal', 'cropped'])
-    
-        return [retinal_loss_train, test_loss_dict['retinal'], cropped_loss_train, test_loss_dict['cropped']], seen_labels
+            test_loss_dict = test_loss(vae, test_data, ['retinal', 'cropped'])
+            returnval = [retinal_loss_train, test_loss_dict['retinal'], cropped_loss_train, test_loss_dict['cropped']]
+        except:
+            seen_labels = None
+            returnval = [0,0,0,0]
+
+
+        return returnval, seen_labels
