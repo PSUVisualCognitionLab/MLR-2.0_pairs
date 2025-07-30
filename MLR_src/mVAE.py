@@ -642,7 +642,7 @@ def progress_out(vae, data, checkpoint_folder,name):
         activations = vae.activations(sample, False,None,'object',True)   #get the activations from this image 
         skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
     
-        shape = vae.decoder_shape(activations['shape'], 0, 0)                   # The shape reconstruction alone
+        shape = vae.decoder_object(activations['shape'], 0, 0)                   # The shape reconstruction alone
         recon = vae.decoder_cropped_object(activations['shape'],activations['color'])   #combine the shape and color maps to reconstructions
     
     else:
