@@ -259,14 +259,12 @@ class VAE_CNN(nn.Module):
 #        return self.fc31(h), self.fc32(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
         return self.fc35(h), self.fc36(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
 
-    def activations(self, x, retinal=False, hskip = None, which_encode='digit',flag = False): # returns shape, color, scale, location, and skip(l1) latent activations
+    def activations(self, x, retinal=False, hskip = None, which_encode='digit'): # returns shape, color, scale, location, and skip(l1) latent activations
         if which_encode == 'digit':   
             encoder = self.encoder     #Note that we have two different latents for shape and object (quickdraw)
         else:
             encoder = self.encoder_object
-            if(flag):
-                print('went into the object encoder')
-        
+
         if hskip is not None:   #skip connection activation  (not sure what latent this is )
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x, hskip)
         
@@ -638,15 +636,13 @@ def progress_out(vae, data, checkpoint_folder,name):
     vae.eval()
     sample = data[:sample_size].to(device)   #the actual image
     if('quickdraw' in name):
-        print('outputing quickdraw')
-        activations = vae.activations(sample, False,None,'object',True)   #get the activations from this image 
+        activations = vae.activations(sample, False,None,'object')   #get the activations from this image 
         skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
     
         shape = vae.decoder_object(activations['shape'], 0, 0)                   # The shape reconstruction alone
         recon = vae.decoder_cropped_object(activations['shape'],activations['color'])   #combine the shape and color maps to reconstructions
     
     else:
-        print('outputting digt/letter shape map')
         activations = vae.activations(sample, False)   #get the activations from this image 
         skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
     
@@ -690,19 +686,15 @@ def update_seen_labels(batch_labels, current_labels):
     return seen_labels
 
 def place_crop(crop_data,loc): # retina placement on GPU for training
-    #print(loc.size())
     #resize = torch_transforms.Resize((28, 28))
     #crop_data = resize(torch_transforms.functional.to_pil_image(crop_data))
     #crop_data = torch_transforms.ToTensor(crop_data)
-    #print(crop_data.size())
     b_dim = crop_data.size(0)
     out_retina = torch.zeros(b_dim,3,retina_size,retina_size).cuda()
     for i in range(len(out_retina)):
         j,x = torch.max(loc[i][0],dim=0)
         z,y = torch.max(loc[i][1],dim=0)
-        #print(x,y)
         out_retina[i,:,(retina_size-y)-imgsize:retina_size-y,x:x+imgsize] = crop_data[i]
-    #print(out_retina.size())
     return out_retina
 
 def component_to_grad(comp): # determine gradient for component training
