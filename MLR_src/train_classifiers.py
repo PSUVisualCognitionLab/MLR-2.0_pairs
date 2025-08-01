@@ -19,6 +19,11 @@ mnist-skip
 '''
 
 def train_classifiers(dataloaders, vae, checkpoint_folder):
+    print('training object data on skip using object labels')   #this should be low but above chance
+    clf_oko = classifier_train(vae, 'skip', dataloaders['quickdraw'],'object')
+    dump(clf_oko, f'checkpoints/{checkpoint_folder}/oco.joblib')
+    pred_oko,  coreport = classifier_test(vae, 'skip', clf_oco, dataloaders['quickdraw'],'quickdraw','object' ,1)
+
     print('training object data on color map using color labels')   #this should be high
     clf_occ = classifier_train(vae, 'color', dataloaders['quickdraw'], 'color')
     dump(clf_occ, f'checkpoints/{checkpoint_folder}/occ.joblib')
@@ -33,7 +38,6 @@ def train_classifiers(dataloaders, vae, checkpoint_folder):
     clf_oco = classifier_train(vae, 'color', dataloaders['quickdraw'],'object')
     dump(clf_oco, f'checkpoints/{checkpoint_folder}/oco.joblib')
     pred_oco,  coreport = classifier_test(vae, 'color', clf_oco, dataloaders['quickdraw'],'quickdraw','object' ,1)
-
 
 def classifier_train(vae, whichcomponent, train_dataset,whichlabel):
     #trains an svm using a given dataset, from a given latent space (whichcomponent) and datalabel
