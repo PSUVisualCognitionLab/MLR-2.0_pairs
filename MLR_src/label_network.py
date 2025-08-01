@@ -32,13 +32,12 @@ def train_labelnet(dataloaders, vae, epoch_count, checkpoint_folder):
     optimizer_colorlabels= optim.Adam(vae_color_labels.parameters())
     optimizer_objectlabels= optim.Adam(vae_object_labels.parameters())
 
-    label_nets = [vae_shape_labels, vae_object_labels, vae_color_labels]
-    optimizers = [optimizer_shapelabels, optimizer_objectlabels, optimizer_colorlabels]
-    components = ['shape', 'object', 'color']
+    label_nets = {'shape':[vae_shape_labels, optimizer_shapelabels],
+                  'object': [vae_object_labels, optimizer_objectlabels],
+                  'color': [vae_color_labels, optimizer_colorlabels]}
 
-    for i in range(len(label_nets)):
-        label_net, optimizer = label_nets[i], optimizers[i]
-        whichcomponent = components[i]
+    for whichcomponent in label_nets:
+        label_net, optimizer = label_nets[whichcomponent]
         for epoch in range (1,epoch_count):
             #train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer, folder_path):
             whichloader =  training_components[whichcomponent][0][0] 
