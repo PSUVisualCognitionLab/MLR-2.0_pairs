@@ -256,7 +256,6 @@ class VAE_CNN(nn.Module):
             h = self.relu(self.bn4(self.conv4(h)))
             h = h.view(-1,int(imgsize / 4) * int(imgsize / 4)*16)
             h = self.relu(self.fc_bn2(self.fc2(h)))
-#        return self.fc31(h), self.fc32(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
         return self.fc35(h), self.fc36(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
 
     def activations(self, x, retinal=False, hskip = None, which_encode='digit'): # returns shape, color, scale, location, and skip(l1) latent activations
@@ -271,12 +270,15 @@ class VAE_CNN(nn.Module):
         elif retinal is True:    #passing in a full retina as input and extracting the latent coding of the cropped representation
             x, theta = self.stn_encode(x)
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x)
+            mu_object, log_var_object, mu_colorx, log_var_colorx, hskipx = self.encoder_object(x)
         
         else:  #passing in just cropped image
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x)
+            mu_object, log_var_object, mu_colorx, log_var_colorx, hskipx = self.encoder_object(x)
         
         z_shape = self.sampling(mu_shape, log_var_shape)
         z_color = self.sampling(mu_color, log_var_color)
+        z_object = self.sampling(mu_object, log_var_object)
 
         if retinal is True:
             z_scale = theta[:,:1]
@@ -285,7 +287,7 @@ class VAE_CNN(nn.Module):
             z_scale = 0
             z_location = 0
 
-        out_dict = {'shape':z_shape, 'color':z_color, 'scale':z_scale, 'location':z_location, 'skip':hskip}
+        out_dict = {'shape':z_shape, 'color':z_color, 'object':z_object, 'scale':z_scale, 'location':z_location, 'skip':hskip}
 
         return out_dict
 
@@ -390,6 +392,9 @@ class VAE_CNN(nn.Module):
             h = self.dropout(h)
         h = self.conv8(h).view(-1, 3, imgsize, imgsize)
         return torch.sigmoid(h)
+    
+    def color_decode_wrapper(self, z_color):
+        return self.decoder_color(0, z_color)
 
     def decoder_shape(self, z_shape, z_color=0, hskip=0):
         h = F.relu(self.fc4s(z_shape)) * self.shape_scale

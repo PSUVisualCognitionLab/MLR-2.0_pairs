@@ -1,12 +1,11 @@
 import sys
 import time
-#time.sleep(10800)
 import argparse
 
 parser = argparse.ArgumentParser(description="Training of MLR-2.0")
 parser.add_argument("--load_prev", type=bool, default=False, help="Begin training from previous checkpoints")
-parser.add_argument("--cuda_device", type=int, default=1, help="Which cuda device to use")
 parser.add_argument("--cuda", type=bool, default=True, help="Cuda availability")
+parser.add_argument("--cuda_device", type=int, default=1, help="Which cuda device to use")
 parser.add_argument("--folder", type=str, default='test', help="Where to store checkpoints in checkpoints/")
 # VVV defines which components are trained
 parser.add_argument("--components", nargs='+', type=str, default=['shape', 'color', 'retinal', 'object', 'skip_cropped', 'cropped', 'retinal_object', 'cropped_object'], help="Which components to train")
@@ -30,13 +29,10 @@ from MLR_src.dataset_builder import Dataset
 from MLR_src.train_mVAE import train_mVAE
 from MLR_src.train_labels import train_labelnet
 from MLR_src.train_classifiers import train_classifiers
-#from torchvision import datasets, transforms, utils
-import torch.nn as nn
 from training_constants import training_datasets, training_components
 from itertools import cycle
 
 folder_name = args.folder
-#torch.set_default_dtype(torch.float64)
 checkpoint_folder_path = f'checkpoints/{folder_name}/' # the output folder for the trained model versions
 
 if not os.path.exists('training_samples/'):
@@ -68,7 +64,7 @@ else:
     print('CUDA not available')
 
 bs=100   #batch size for training the main VAE
-SVM_bs = 25000  #batch size for training the spatial vision transformer
+SVM_bs = 250  #batch size for training the spatial vision transformer
 obj_latent_flag = True   #this flag determines whether the VAE has an obj latent space
 
 
