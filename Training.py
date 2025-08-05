@@ -64,7 +64,7 @@ else:
     print('CUDA not available')
 
 bs=100   #batch size for training the main VAE
-SVM_bs = 250  #batch size for training the spatial vision transformer
+SVM_bs = 25000  #batch size for training the spatial vision transformer
 obj_latent_flag = True   #this flag determines whether the VAE has an obj latent space
 
 

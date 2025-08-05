@@ -4,6 +4,12 @@ from mVAE import vae, load_checkpoint
 from torch.utils.data import DataLoader, ConcatDataset
 from dataset_builder import dataset_builder
 
+
+
+########################################################
+#This file does not work
+
+
 load_checkpoint('output_emnist_recurr/checkpoint_300.pth')
 bs = 50
 load_checkpoint_shapelabels('output_label_net/checkpoint_shapelabels10.pth')
