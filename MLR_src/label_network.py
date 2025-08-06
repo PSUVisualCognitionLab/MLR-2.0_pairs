@@ -6,7 +6,8 @@ import torch.optim as optim
 from torchvision import datasets, transforms, utils
 from torchvision.utils import save_image
 from sklearn.metrics import classification_report, confusion_matrix
-from training_constants import training_components
+from training_constants import training_components, text_to_tensor
+import torch.nn.functional as F
 import os
 
 from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION
@@ -228,39 +229,32 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
                      feature_recon_label.view(sample_size, 3, 28, 28)
                      ], 0)
 
-            batch_size, channels, height, width = output_img.shape
-            header_height = 20
+            #this next bit collapses the long image into a stack of rows so that the text can be added
+            #convert the 60 x 3 x 28 x 28 tensor into a 3 row stack that is now 3 x 28*20 X 28 * 3
+            output_img2 = output_img.view(3,sample_size,3,28,28)
+            output_img2 = output_img2.permute(0,2,3,1,4).contiguous().view(3,3,28,sample_size*28)
+            output_img2 = output_img2.permute(1,0,2,3).contiguous().view(3,3*28,sample_size*28)
+
+            channels, height, width = output_img2.shape
+            header_height = 20            
             # Create new tensor with extra height for text
             new_height = height + header_height
-            new_tensor = torch.ones(batch_size, channels, new_height, width) * 0.8  # Light gray background
-            new_tensor[:, :, header_height:, :] = output_img
-            text_tensor = create_simple_text_tensor("Label", header_height, width, channels)
-            new_tensor[i, :, :header_height, :] = text_tensor
+            new_tensor = torch.ones(channels, new_height, width) * 0.8  # Light gray background
+            new_tensor[:, header_height:, :] = output_img2
+            text_tensor = text_to_tensor("Image / recon from encoder / recon from label ",header_height,width)
+            new_tensor[:, :header_height, :] = text_tensor
 
             utils.save_image(new_tensor,
-                f'{folder_path}{whichcomponent}{str(epoch).zfill(5)}_{str(i).zfill(5)}.png',
-                nrow=sample_size,
+                f'{folder_path}{whichcomponent}{str(epoch).zfill(5)}_{str(i).zfill(5)}2.png',
+                nrow = 1,
                 normalize=False,
             )
+
         if i > max_iter + 1:
             break
     print(f'====> Epoch: {epoch} Average loss {whichcomponent}: {train_loss}')
 
 
-
-def create_simple_text_tensor(text, height, width, channels):
-    """Create a simple text representation in tensor form (basic bars/patterns)"""
-    # This creates a simple pattern - not actual text
-    # For real text, use Method 2 or 3
-    tensor = torch.ones(channels, height, width) * 0.9
-    
-    # Add some simple patterns based on text (just as example)
-    for i, char in enumerate(text[:width//10]):
-        start_x = i * (width // 10)
-        end_x = min(start_x + 5, width)
-        tensor[:, height//2:height//2+3, start_x:end_x] = 0.2
-    
-    return tensor
     
 # not working VVV
 def test_outputs(test_loader, n = 0.5):
