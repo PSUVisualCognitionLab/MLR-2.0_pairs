@@ -2,8 +2,9 @@
 import torch
 from MLR_src.mVAE import train
 import torch.optim as optim
+from itertools import cycle
 
-def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, start_epoch = 1, dimensions = []):
+def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use_wandb, start_epoch = 1, dimensions = []):
     if use_wandb is True:
         import wandb
         from MLR_src.wandb_setup import initialize_wandb, log_system_metrics
@@ -11,12 +12,15 @@ def train_mVAE(dataloaders, vae, epoch_count, checkpoint_folder, use_wandb, star
 
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     seen_labels = {}
-    components = 3*['shape'] + 3*['color']+ 3*['cropped'] + 3*['skip_cropped'] + ['retinal'] +  3*['object'] + 3*['cropped_object'] + ['retinal_object']
+        
 
     for epoch in range(start_epoch, epoch_count):
+        
+
         loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components, 600, checkpoint_folder)
 
-        if use_wandb is True:
+
+        if use_wandb is True:   #this connects with weights and biases.. a website that tracks loss data over time.  Currently inoperable due to version conflict
             wandb.log({
             'epoch': epoch,
             'retinal/training_loss': loss_lst[0],

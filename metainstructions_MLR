@@ -1,0 +1,9 @@
+Meta lines for running simulations in MLR-2.0 
+Activate torchenv37 first
+
+
+
+
+
+How to run plotting
+python plotting.py --c_folder stn_quickdraw_mnist  --run_name Brad

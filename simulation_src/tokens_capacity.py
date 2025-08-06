@@ -93,7 +93,7 @@ def binding_cue(bs_testing, perms,bpsize, bpPortion, shape_coeff, color_coeff,sa
 
     MNISTwithindex = dataset_with_indices(datasets.MNIST)
 
-    test_dataset_MNIST_NC = MNISTwithindex(root='./mnist_data/', train=False,
+    test_dataset_MNIST_NC = MNISTwithindex(root='./mnist/', train=False,
                                            transform=transforms.Compose([Colorize_func_secret, transforms.ToTensor()]), download=False)
 
     tokenactivation = torch.zeros(bs_testing, perms)

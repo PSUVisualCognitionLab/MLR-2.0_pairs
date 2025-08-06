@@ -11,7 +11,12 @@
 .outputFile
 *.png
 *.pyc
-MLR_src/data/
-MLR_src/data/cifar-10-batches-py/
+checkpoints
+data
+simulations
+previews
+training_samples
+newimg
+mnist_data_old
 *.tar.gz
 *.bin
