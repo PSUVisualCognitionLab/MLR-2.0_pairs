@@ -13,7 +13,7 @@ import os
 from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION
 from joblib import dump, load
 import copy
-from PIL import Image, ImageDraw, ImageFont
+
 
 bs = 100
 s_classes = 36
@@ -155,11 +155,6 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
 
     dataiter = train_loader
 
-    try:
-        font = ImageFont.truetype("arial.ttf", 36)
-    except:
-        font = ImageFont.load_default()
-
     text ='LABEL'
 
 
@@ -228,12 +223,12 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
                      feature_recon.view(sample_size, 3, 28, 28),
                      feature_recon_label.view(sample_size, 3, 28, 28)
                      ], 0)
-
+            rows = 3
             #this next bit collapses the long image into a stack of rows so that the text can be added
-            #convert the 60 x 3 x 28 x 28 tensor into a 3 row stack that is now 3 x 28*20 X 28 * 3
-            output_img2 = output_img.view(3,sample_size,3,28,28)
-            output_img2 = output_img2.permute(0,2,3,1,4).contiguous().view(3,3,28,sample_size*28)
-            output_img2 = output_img2.permute(1,0,2,3).contiguous().view(3,3*28,sample_size*28)
+            #convert the sample_size*rows x 3 x 28 x 28 tensor into a  stack that is now 3 x rows*28 x sample_size*28
+            output_img2 = output_img.view(rows,sample_size,3,28,28)
+            output_img2 = output_img2.permute(0,2,3,1,4).contiguous().view(rows,3,28,sample_size*28)
+            output_img2 = output_img2.permute(1,0,2,3).contiguous().view(3,rows*28,sample_size*28)
 
             channels, height, width = output_img2.shape
             header_height = 20            
@@ -245,7 +240,7 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
             new_tensor[:, :header_height, :] = text_tensor
 
             utils.save_image(new_tensor,
-                f'{folder_path}{whichcomponent}{str(epoch).zfill(5)}_{str(i).zfill(5)}2.png',
+                f'{folder_path}{whichcomponent}{str(epoch).zfill(5)}_{str(i).zfill(5)}.png',
                 nrow = 1,
                 normalize=False,
             )

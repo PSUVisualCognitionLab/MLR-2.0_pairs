@@ -27,7 +27,8 @@ from torchvision import utils
 from torchvision.utils import save_image
 from tqdm import tqdm
 from torchvision import transforms as torch_transforms
-from training_constants import training_components
+from training_constants import training_components, text_to_tensor
+
 
 from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION
 
@@ -657,11 +658,37 @@ def progress_out(vae, data, checkpoint_folder,name):
     color = vae.decoder_color(0, activations['color'], 0)                   #the color alone
     vae.train()
      
-    utils.save_image(
-            torch.cat([sample.view(sample_size, 3, imgsize, imgsize)[:25], recon.view(sample_size, 3, imgsize, imgsize)[:25], skip.view(sample_size, 3, imgsize, imgsize)[:25],
-                       shape.view(sample_size, 3, imgsize, imgsize)[:25], color.view(sample_size, 3, imgsize, imgsize)[:25]], 0),
-            f'training_samples/{checkpoint_folder}/cropped_sample{name}.png',
-            nrow=sample_size, normalize=False)
+    output_img = torch.cat([sample.view(sample_size, 3, imgsize, imgsize)[:25], recon.view(sample_size, 3, imgsize, imgsize)[:25], skip.view(sample_size, 3, imgsize, imgsize)[:25],
+                       shape.view(sample_size, 3, imgsize, imgsize)[:25], color.view(sample_size, 3, imgsize, imgsize)[:25]], 0)
+     
+    rows = 5;    
+    #print(sample_size)
+    #this next bit collapses the long image into a stack of rows so that the text can be added
+    #convert the sample_size*rows x 3 x 28 x 28 tensor into a  stack that is now 3 x rows*28 x sample_size*28
+    output_img2 = output_img.view(rows,sample_size,3,28,28)
+    output_img2 = output_img2.permute(0,2,3,1,4).contiguous().view(rows,3,28,sample_size*28)
+    output_img2 = output_img2.permute(1,0,2,3).contiguous().view(3,rows*28,sample_size*28)
+
+    channels, height, width = output_img2.shape
+    header_height = 20            
+    # Create new tensor with extra height for text
+    new_height = height + header_height
+    new_tensor = torch.ones(channels, new_height, width) * 0.8  # Light gray background
+    new_tensor[:, header_height:, :] = output_img2
+    text_tensor = text_to_tensor("Image / both maps recon / skip recon / shape recon/color recon ",header_height,width)
+    new_tensor[:, :header_height, :] = text_tensor
+
+    utils.save_image(new_tensor,f'training_samples/{checkpoint_folder}/cropped_sample{name}.png',
+            nrow=1, normalize=False)
+   
+
+
+
+
+
+
+
+
 
 def test_loss(vae, test_data, whichdecode = []):
     loss_dict = {}
@@ -827,6 +854,9 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         loader.set_description((f'epoch: {epoch}; mse: {loss.item():.5f};'))
         seen_labels = None #update_seen_labels(batch_labels,seen_labels)
 
+        test_data, labels = next(dataloaders['emnist-map'])
+        #progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))    #this is used to test progress_out without waiting for a whole epoch
+
         if count % int(0.9*max_iter) == 0:
             #test_data, j = next(test_iter)
             try:
@@ -834,14 +864,13 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
                 test_data, labels = next(dataloaders['emnist-map'])
                 progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))
             except:
-                print('failed1')
+                print('Progress_out failed to create a training sample image for emnist')
                 pass
             try:
                 test_data, labels = next(dataloaders['quickdraw'])
                 progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch))
             except:
-                print('failed2')
-                
+                print('Progress_out failed to create a training sample image for quickdraw')
                 pass
 
 
