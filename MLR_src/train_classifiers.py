@@ -27,6 +27,17 @@ def train_classifiers(dataloaders, vae, checkpoint_folder):
 #    dump(clf_oko, f'checkpoints/{checkpoint_folder}/oco.joblib')
 #    pred_oko,  coreport = classifier_test(vae, 'skip', clf_oco, dataloaders['quickdraw'],'quickdraw','object' ,1)
 
+    print('training emnist data on shape map using shape labels')   #this should be high
+    clf_ess = classifier_train(vae, 'shape', dataloaders['emnist-map'], 'shape')
+    dump(clf_ess, f'checkpoints/{checkpoint_folder}/ess.joblib')
+    pred_ess,  coreport = classifier_test(vae, 'shape', clf_ess, dataloaders['emnist-map'],'emnist','shape', 1)
+
+    print('training mnist data on shape map using shape labels')   #this should be high
+    clf_mss = classifier_train(vae, 'shape', dataloaders['mnist-map'], 'shape')
+    dump(clf_mss, f'checkpoints/{checkpoint_folder}/mss.joblib')
+    pred_mss,  coreport = classifier_test(vae, 'shape', clf_mss, dataloaders['mnist-map'],'mnist','shape', 1)
+
+
 
     print('training object data on color map using color labels')   #this should be high
     clf_occ = classifier_train(vae, 'color', dataloaders['quickdraw'], 'color')
