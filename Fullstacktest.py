@@ -14,7 +14,7 @@ parser.add_argument("--cuda", type=bool, default=True, help="Cuda availability")
 parser.add_argument("--cuda_device", type=int, default=1, help="Which cuda device to use")
 parser.add_argument("--folder", type=str, default='test', help="Where to store checkpoints in checkpoints/")
 # VVV defines which components are trained
-#parser.add_argument("--components", nargs='+', type=str, default=['shape', 'color', 'retinal', 'object', 'skip_cropped', 'cropped', 'retinal_object', 'cropped_object'], help="Which components to train")
+parser.add_argument("--components", nargs='+', type=str, default=['shape', 'color', 'retinal', 'object', 'skip_cropped', 'cropped', 'retinal_object', 'cropped_object'], help="Which components to train")
 #parser.add_argument("--z_dim", type=int, default=8, help="Size of the mVAE latent dimension")
 #parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label_net', 'SVM'], help="Which models to train")
 #parser.add_argument("--wandb", type=bool, default=False, help="Track training with wandb")
@@ -33,10 +33,13 @@ from MLR_src.mVAE import load_checkpoint, vae_builder, load_dimensions
 #from torch.utils.data import DataLoader, ConcatDataset
 from MLR_src.dataset_builder import Dataset
 from MLR_src.train_mVAE import train_mVAE
-from MLR_src.label_network import train_labelnet
+from MLR_src.label_network import train_labelnet, load_checkpoint_shapelabels, load_checkpoint_colorlabels
 from MLR_src.train_classifiers import train_classifiers
 from training_constants import training_datasets, training_components
 from itertools import cycle
+from torchvision import utils
+from torchvision.utils import save_image
+
 import joblib
 
 folder_name = args.folder
@@ -72,7 +75,13 @@ clf_ess = joblib.load(f'{checkpoint_folder_path}/ess.joblib')
 #    pred_sss,  coreport = classifier_test(vae, 'shape', clf_sss, dataloaders['emnist-map'],'emnist','shape', 1)
 print('ess Classifier  loaded  (emnist classification)')   #this should be high
     
-labelnetwork = load_checkpoint(f'checkpoints/{checkpoint_folder_path}/label_network_checkpoint.pth')
+
+
+#vae_shape_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=8)
+#vae_object_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=8)
+#vae_color_labels= VAEcolorlabels(xlabel_dim=10, hlabel_dim=7,  zlabel_dim=8)
+
+shapenetwork = load_checkpoint_shapelabels(f'{checkpoint_folder_path}label_network_checkpoint.pth')
 
 
 
@@ -87,7 +96,6 @@ weighted_components = [] #specifies the order/frequency the model latents will b
 # model components are the latent spaces, like shape, color, etc   Each component also has a specific list of transforms
 
 for component in args.components:
-    print(component)
     weight = training_components[component][1]
     weighted_components += [component] * weight
     for dataset in training_components[component][0]:
@@ -103,27 +111,30 @@ for component in args.components:
         dataset_transforms = training_datasets[dataset]   #load the transforms for this dataset
         SVM_dataloaders[dataset] = cycle(Dataset(dataset_name, dataset_transforms).get_loader(SVM_bs))
 
-print(SVM_dataloaders)
-
-
 vae.to(device)
 
 #print(dataloaders.keys())
+dataloader = dataloaders['emnist-map']
+print(dataloader)
 
-print(f'Training: {args.train_list}')
-epoch_count = args.end_ep
+     
 
-#train mVAE
-if 'mVAE' in args.train_list:
-    print('Training: mVAE')
-    train_mVAE(dataloaders, weighted_components, vae, epoch_count, folder_name, args.wandb, args.start_ep, dimensions)
+sample, labels = next(dataloader) 
 
-#train_labels
-if 'label_net' in args.train_list:
-    print('Training: label networks')
-    train_labelnet(dataloaders, vae, 15, folder_name)
+#output_img = torch.cat([sample.view(sample_size, 3, imgsize, imgsize)[:25], recon.view(sample_size, 3, imgsize, imgsize)[:25], skip.view(sample_size, 3, imgsize, imgsize)[:25],
+#                       shape.view(sample_size, 3, imgsize, imgsize)[:25], color.view(sample_size, 3, imgsize, imgsize)[:25]], 0)
 
-#train_classifiers
-if 'SVM' in args.train_list:
-    print('Training: classifiers')
-    train_classifiers(SVM_dataloaders, vae, folder_name)
+sample = sample[1]  # get the cropped versions
+labels = labels[0]
+
+#sample_size =50
+#imgsize = 28
+#output_img = torch.cat([sample.view(sample_size, 3, imgsize, imgsize)])
+#utils.save_image(output_img,f'samples.png',
+#            nrow=1, normalize=False)
+   
+
+#print(sample[1].shape)
+#print(labels[1])
+
+#print(len(sample))

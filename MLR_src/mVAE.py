@@ -685,11 +685,6 @@ def progress_out(vae, data, checkpoint_folder,name):
 
 
 
-
-
-
-
-
 def test_loss(vae, test_data, whichdecode = []):
     loss_dict = {}
     vae.eval()
@@ -776,8 +771,8 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         # determine which latent or connection is being trained  (shape/color/skip etc)
         # depending on the latent that we will train on this iteration, select the appropriate dataloader
         comp_ind = count % len(components)  #step through the whole list of components
-        whichdecode_use = components[comp_ind]  #which particular latent/decoder to use for this component 
-        sample_dataloaders = training_components[components[comp_ind]][0]  #which dataloader(s) does this particular component need?
+        whichdecode_use = components[comp_ind]  #which particular latent/decoder to use for this component   (string)
+        sample_dataloaders = training_components[components[comp_ind]][0]  #which dataloader(s) does this particular component need?  (string)
         samples = []
         for sample_dataloader_name in sample_dataloaders:
             sample_dataloader = dataloaders[sample_dataloader_name]
@@ -788,9 +783,9 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
 
             if type(sample) == list:
                 if whichdecode_use in ['cropped', 'shape', 'color', 'object', 'cropped_object']:
-                    sample = sample[1]
+                    sample = sample[1]   # cropped version
                 else:
-                    sample = sample[0]
+                    sample = sample[0]   #Retina version 
             samples += [sample]
 
         data = torch.cat(samples, 0)
