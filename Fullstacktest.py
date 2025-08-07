@@ -34,11 +34,12 @@ from MLR_src.mVAE import load_checkpoint, vae_builder, load_dimensions
 from MLR_src.dataset_builder import Dataset
 from MLR_src.train_mVAE import train_mVAE
 from MLR_src.label_network import train_labelnet, load_checkpoint_shapelabels, load_checkpoint_colorlabels
-from MLR_src.train_classifiers import train_classifiers
+from MLR_src.train_classifiers import train_classifiers, classifier_test
 from training_constants import training_datasets, training_components
 from itertools import cycle
 from torchvision import utils
 from torchvision.utils import save_image
+import numpy as np
 
 import joblib
 
@@ -62,7 +63,7 @@ else:
     print('CUDA not available')
 
 
-bs=100   #batch size for training the main VAE
+bs=1000   #batch size for training the main VAE
 SVM_bs = 25000  #batch size for training the spatial vision transformer
 obj_latent_flag = True   #this flag determines whether the VAE has an obj latent space
 
@@ -112,20 +113,35 @@ for component in args.components:
         SVM_dataloaders[dataset] = cycle(Dataset(dataset_name, dataset_transforms).get_loader(SVM_bs))
 
 vae.to(device)
+vae.eval()
+
+
+####################################################################################################
+#Everything is loaded, now time to run some tests
+#First is shape classification
 
 #print(dataloaders.keys())
 dataloader = dataloaders['emnist-map']
-print(dataloader)
+sample, labels = next(dataloader)   #get one batch from the data loader
 
-     
+sample = sample[1].to(device)  # get the cropped versions
+shapelabels = labels[0]
+colorlabels = labels[1]
 
-sample, labels = next(dataloader) 
+passin = 'digit'   #ensure that we are using the shape map not the object map 
+whichcomponent = 'shape'
+
+z = vae.activations(sample, False, None, passin)[whichcomponent]  #get the activations from the shape map
+pred = clf_ess.predict(z.cpu().detach().numpy())
+
+accurate =  np.sum(pred-shapelabels.numpy() == 0)
+print(f'accuracy of the shape classifier is {accurate/len(pred)}')
+
+
 
 #output_img = torch.cat([sample.view(sample_size, 3, imgsize, imgsize)[:25], recon.view(sample_size, 3, imgsize, imgsize)[:25], skip.view(sample_size, 3, imgsize, imgsize)[:25],
 #                       shape.view(sample_size, 3, imgsize, imgsize)[:25], color.view(sample_size, 3, imgsize, imgsize)[:25]], 0)
 
-sample = sample[1]  # get the cropped versions
-labels = labels[0]
 
 #sample_size =50
 #imgsize = 28
