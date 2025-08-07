@@ -155,11 +155,6 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
 
     dataiter = train_loader
 
-    text ='LABEL'
-
-
-
-    # labels_color=0
     max_iter = 100
     for i , j in enumerate(train_loader):
         optimizer.zero_grad()
