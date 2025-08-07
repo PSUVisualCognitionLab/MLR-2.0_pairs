@@ -64,7 +64,7 @@ else:
     print('CUDA not available')
 
 
-bs=1000   #batch size for training the main VAE
+bs=10000   #batch size for training the main VAE
 SVM_bs = 25000  #batch size for training the spatial vision transformer
 obj_latent_flag = True   #this flag determines whether the VAE has an obj latent space
 
@@ -73,10 +73,9 @@ vae = load_checkpoint(f'{checkpoint_folder_path}{args.checkpoint_name}', d, obj_
 dimensions = load_dimensions(f'{checkpoint_folder_path}/{args.checkpoint_name}', d)
 print('VAE checkpoint loaded')     
 
-clf_ess = joblib.load(f'{checkpoint_folder_path}/ess.joblib')
+clf_shape = joblib.load(f'{checkpoint_folder_path}/ess.joblib')
 #    pred_sss,  coreport = classifier_test(vae, 'shape', clf_sss, dataloaders['emnist-map'],'emnist','shape', 1)
-print('ess Classifier  loaded  (emnist classification)')   #this should be high
-    
+print('Classifier  loaded  (emnist classification)')   
 
 
 #vae_shape_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=8)
@@ -133,7 +132,7 @@ whichcomponent = 'shape'
 
 #pass the stimuli into the encoder to get the map activity
 z = vae.activations(sample, False, None, passin)[whichcomponent]  #get the activations from the shape map
-pred = clf_ess.predict(z.cpu().detach().numpy())
+pred = clf_shape.predict(z.cpu().detach().numpy())
 
 #now pass the map activity through the classifiers
 accurate =  np.sum(pred-shapelabels.numpy() == 0)
@@ -147,37 +146,37 @@ n = 1 # sampling noise
 
 input_oneHot = F.one_hot(torch.tensor(pred), num_classes=s_classes).float().to(device)   #Generate a one-hot representation of each representation        
 z_label = label_net_shape(input_oneHot,n)  #run a label through the model to generate a latent representation
-pred_fromlabels = clf_ess.predict(z_label.cpu().detach().numpy())
+pred_fromlabels = clf_shape.predict(z_label.cpu().detach().numpy())
 accurate =  np.sum(pred_fromlabels-shapelabels.numpy() == 0)
 print(f'accuracy of the shape classifier of the label-generated images is {accurate/len(pred)}')
 
 input_oneHot = F.one_hot(torch.tensor(pred_fromlabels), num_classes=s_classes).float().to(device)   #Generate a one-hot representation of each representation        
 z_label = label_net_shape(input_oneHot,n)  #run a label through the model to generate a latent representation
-pred_fromlabels = clf_ess.predict(z_label.cpu().detach().numpy())
+pred_fromlabels = clf_shape.predict(z_label.cpu().detach().numpy())
 accurate =  np.sum(pred_fromlabels-shapelabels.numpy() == 0)
 print(f'accuracy of the shape classifier of the label-generated images is {accurate/len(pred)}')
 
 input_oneHot = F.one_hot(torch.tensor(pred_fromlabels), num_classes=s_classes).float().to(device)   #Generate a one-hot representation of each representation        
 z_label = label_net_shape(input_oneHot,n)  #run a label through the model to generate a latent representation
-pred_fromlabels = clf_ess.predict(z_label.cpu().detach().numpy())
+pred_fromlabels = clf_shape.predict(z_label.cpu().detach().numpy())
 accurate =  np.sum(pred_fromlabels-shapelabels.numpy() == 0)
 print(f'accuracy of the shape classifier of the label-generated images is {accurate/len(pred)}')
 
 input_oneHot = F.one_hot(torch.tensor(pred_fromlabels), num_classes=s_classes).float().to(device)   #Generate a one-hot representation of each representation        
 z_label = label_net_shape(input_oneHot,n)  #run a label through the model to generate a latent representation
-pred_fromlabels = clf_ess.predict(z_label.cpu().detach().numpy())
+pred_fromlabels = clf_shape.predict(z_label.cpu().detach().numpy())
 accurate =  np.sum(pred_fromlabels-shapelabels.numpy() == 0)
 print(f'accuracy of the shape classifier of the label-generated images is {accurate/len(pred)}')
 
 input_oneHot = F.one_hot(torch.tensor(pred_fromlabels), num_classes=s_classes).float().to(device)   #Generate a one-hot representation of each representation        
 z_label = label_net_shape(input_oneHot,n)  #run a label through the model to generate a latent representation
-pred_fromlabels = clf_ess.predict(z_label.cpu().detach().numpy())
+pred_fromlabels = clf_shape.predict(z_label.cpu().detach().numpy())
 accurate =  np.sum(pred_fromlabels-shapelabels.numpy() == 0)
 print(f'accuracy of the shape classifier of the label-generated images is {accurate/len(pred)}')
 
 input_oneHot = F.one_hot(torch.tensor(pred_fromlabels), num_classes=s_classes).float().to(device)   #Generate a one-hot representation of each representation        
 z_label = label_net_shape(input_oneHot,n)  #run a label through the model to generate a latent representation
-pred_fromlabels = clf_ess.predict(z_label.cpu().detach().numpy())
+pred_fromlabels = clf_shape.predict(z_label.cpu().detach().numpy())
 accurate =  np.sum(pred_fromlabels-shapelabels.numpy() == 0)
 print(f'accuracy of the shape classifier of the label-generated images is {accurate/len(pred)}')
 
