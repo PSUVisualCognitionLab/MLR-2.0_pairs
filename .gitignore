@@ -20,3 +20,10 @@ newimg
 mnist_data_old
 *.tar.gz
 *.bin
+*.pt
+*.pth
+*.npy
+*.gz
+*.meta
+*.log
+*.joblib
