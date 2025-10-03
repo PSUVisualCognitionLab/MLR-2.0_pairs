@@ -64,7 +64,7 @@ else:
     print('CUDA not available')
 
 bs=100   #batch size for training the main VAE
-SVM_bs = 250  #batch size for training the spatial vision transformer
+SVM_bs = 25000  #batch size for training the spatial vision transformer
 obj_latent_flag = True   #this flag determines whether the VAE has an obj latent space
 
 
@@ -88,7 +88,6 @@ weighted_components = [] #specifies the order/frequency the model latents will b
 # model components are the latent spaces, like shape, color, etc   Each component also has a specific list of transforms
 
 for component in args.components:
-    print(component)
     weight = training_components[component][1]
     weighted_components += [component] * weight
     for dataset in training_components[component][0]:
@@ -103,8 +102,6 @@ for component in args.components:
         dataset_name = dataset.split('-')[0]
         dataset_transforms = training_datasets[dataset]   #load the transforms for this dataset
         SVM_dataloaders[dataset] = cycle(Dataset(dataset_name, dataset_transforms).get_loader(SVM_bs))
-
-print(SVM_dataloaders)
 
 
 vae.to(device)

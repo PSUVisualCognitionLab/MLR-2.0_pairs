@@ -1,3 +1,6 @@
+from PIL import Image, ImageDraw, ImageFont
+from torchvision import datasets, transforms, utils
+
 training_datasets = {'emnist-map': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True},
                      'emnist-skip': {'retina':False, 'colorize':True, 'rotate':True, 'scale':True, 'skip': True},
                      'mnist-map': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True},
@@ -16,3 +19,8 @@ training_components = {'shape': [['emnist-map', 'mnist-map'], 2], # shape map, w
                        'skip_cropped': [['emnist-skip', 'mnist-skip'], 3], # mnist/emnist skip connection
                        'retinal': [['emnist-map', 'mnist-map'], 1], # retinal, scale, location
                        'retinal_object': [['quickdraw'], 1]} # retinal, scale, location, object
+
+def text_to_tensor(text,height,width):
+    img = Image.new('RGB', (width, height), (255, 255, 255))
+    ImageDraw.Draw(img).text((10, 10), text, fill=(0, 0, 0))
+    return transforms.ToTensor()(img)
