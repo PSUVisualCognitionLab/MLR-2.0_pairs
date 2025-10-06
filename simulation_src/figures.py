@@ -327,8 +327,8 @@ def fig_novel_representations(vae, folder_path):
         all_imgs.append(img_new)
     all_imgs = torch.stack(all_imgs)
     imgs = all_imgs.view(-1, 3 * imgsize * imgsize).cuda()
-    location = torch.zeros(imgs.size()[0], vae.l_dim).cuda()
-    location[0] = 1
+    #location = torch.zeros(imgs.size()[0], vae.l_dim).cuda()
+    #location[0] = 1
 
     blank = torch.zeros(1,3,28,28).cuda()
     blank[:,:,]
@@ -421,7 +421,9 @@ def fig_visual_synthesis(vae, shape_label, s_classes, shape_classifier, folder_p
     num1 = 3
     num2 = 15
     device = next(vae.parameters()).device
+    shape_label.to(device)
     num_labels = F.one_hot(torch.tensor([num1, num2]).to(device), num_classes=s_classes).float().to(device) # shape
+    print(num_labels.size())
     z_shape = shape_label(num_labels, 1)
 
     recon_crop = vae.decoder_shape(z_shape)

@@ -97,6 +97,8 @@ class VAEcolorlabels(nn.Module):
         return mu + eps * std
 
     def forward(self, x_labels, n=1):
+        device = next(self.parameters()).device
+        x_labels.to(device)
         h = F.relu(self.fc1label(x_labels))
         mu_shape_label = self.fc21label(h)
         log_var_shape_label = self.fc22label(h)

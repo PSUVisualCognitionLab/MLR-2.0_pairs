@@ -21,7 +21,7 @@ d = 1
 vae = load_checkpoint(f'{checkpoint_folder_path}/mVAE_checkpoint.pth', d, True)
 vae.eval()
 load_checkpoint_shapelabels(f'{checkpoint_folder_path}/label_network_checkpoint.pth', d)
-clf_shapeS = load(f'{checkpoint_folder_path}/ss.joblib')
+clf_shapeS = load(f'{checkpoint_folder_path}/ess.joblib')
 device = torch.device(f'cuda:{d}')
 torch.cuda.set_device(d)
 print('checkpoint loaded')

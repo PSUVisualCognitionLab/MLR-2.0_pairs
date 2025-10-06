@@ -261,20 +261,21 @@ class VAE_CNN(nn.Module):
 
     def activations(self, x, retinal=False, hskip = None, which_encode='digit'): # returns shape, color, scale, location, and skip(l1) latent activations
         if which_encode == 'digit':   
-            encoder = self.encoder     #Note that we have two different latents for shape and object (quickdraw)
+            pass#encoder = self.encoder     #Note that we have two different latents for shape and object (quickdraw)
         else:
-            encoder = self.encoder_object
+            pass#encoder = self.encoder_object
 
         if hskip is not None:   #skip connection activation  (not sure what latent this is )
-            mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x, hskip)
+            mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x, hskip)
+            mu_object, log_var_object, mu_colorx, log_var_colorx, hskipx = self.encoder_object(x, hskip)
         
         elif retinal is True:    #passing in a full retina as input and extracting the latent coding of the cropped representation
             x, theta = self.stn_encode(x)
-            mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x)
+            mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
             mu_object, log_var_object, mu_colorx, log_var_colorx, hskipx = self.encoder_object(x)
         
         else:  #passing in just cropped image
-            mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x)
+            mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
             mu_object, log_var_object, mu_colorx, log_var_colorx, hskipx = self.encoder_object(x)
         
         z_shape = self.sampling(mu_shape, log_var_shape)
