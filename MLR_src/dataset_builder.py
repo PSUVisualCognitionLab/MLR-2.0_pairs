@@ -433,6 +433,9 @@ class Dataset(data.Dataset):
         
         elif dataset == 'quickdraw':
             base_dataset = np.load('data/quickdraw_npy/full_numpy_bitmap_all_objs.npy')
+        
+        elif dataset == 'quickdraw_pairs':
+            base_dataset = np.load("data/quickdraw_pairs.npy")
 
         elif os.path.exists(dataset):
             base_dataset = Image.open(rf'{dataset}')

@@ -257,26 +257,21 @@ class VAE_CNN(nn.Module):
             h = self.relu(self.bn4(self.conv4(h)))
             h = h.view(-1,int(imgsize / 4) * int(imgsize / 4)*16)
             h = self.relu(self.fc_bn2(self.fc2(h)))
-        return self.fc35(h), self.fc36(h), self.fc33(h), self.fc34(h), hskip # mu, log_var
+        return self.fc35(h), self.fc36(h) # mu, log_var
 
-    def activations(self, x, retinal=False, hskip = None, which_encode='digit'): # returns shape, color, scale, location, and skip(l1) latent activations
-        if which_encode == 'digit':   
-            pass#encoder = self.encoder     #Note that we have two different latents for shape and object (quickdraw)
-        else:
-            pass#encoder = self.encoder_object
-
+    def activations(self, x, retinal=False, hskip = None, which_encode=None): # returns shape, color, scale, location, and skip(l1) latent activations
         if hskip is not None:   #skip connection activation  (not sure what latent this is )
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x, hskip)
-            mu_object, log_var_object, mu_colorx, log_var_colorx, hskipx = self.encoder_object(x, hskip)
+            mu_object, log_var_object = self.encoder_object(x, hskip)
         
         elif retinal is True:    #passing in a full retina as input and extracting the latent coding of the cropped representation
             x, theta = self.stn_encode(x)
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
-            mu_object, log_var_object, mu_colorx, log_var_colorx, hskipx = self.encoder_object(x)
+            mu_object, log_var_object = self.encoder_object(x)
         
         else:  #passing in just cropped image
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
-            mu_object, log_var_object, mu_colorx, log_var_colorx, hskipx = self.encoder_object(x)
+            mu_object, log_var_object = self.encoder_object(x)
         
         z_shape = self.sampling(mu_shape, log_var_shape)
         z_color = self.sampling(mu_color, log_var_color)
@@ -491,11 +486,6 @@ class VAE_CNN(nn.Module):
         return torch.sigmoid(h)
 
     def forward(self, x, whichdecode='noskip', keepgrad=[]):
-        if 'object' in whichdecode:
-            encoder = self.encoder_object
-        else:
-            encoder = self.encoder
-
         if 'retinal' in whichdecode:    #passing in a cropped+ location as input
             if type(x) == list or type(x) == tuple:
                 x = x[0].cuda()
@@ -503,13 +493,15 @@ class VAE_CNN(nn.Module):
                 x = x.cuda()
             
             x, theta = self.stn_encode(x)
-            mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x)
+            mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
+            mu_object, log_var_object = self.encoder_object(x)
         else:  #passing in just cropped image
             if type(x) == list or type(x) == tuple:
                 x = x[1].cuda()
             else:
                 x = x.cuda()
-            mu_shape, log_var_shape, mu_color, log_var_color, hskip = encoder(x)
+            mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
+            mu_object, log_var_object = self.encoder_object(x)
 
         # the maps that are used in the training process.. the others are detached to zero out those gradients
         if ('shape' in keepgrad):
