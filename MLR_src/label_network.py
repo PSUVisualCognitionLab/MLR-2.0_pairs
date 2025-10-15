@@ -133,12 +133,18 @@ def load_checkpoint_shapelabels(filepath, d=0):
     vae_shape_labels.eval().to(device)
     return vae_shape_labels
 
-def load_checkpoint_colorlabels(filepath):
+def load_checkpoint_colorlabels(filepath, d=0):
+    if torch.cuda.is_available():
+        device = torch.device(f'cuda:{d}')
+        torch.cuda.set_device(d)
+    else:
+        device = 'cpu'
+    
     checkpoint = torch.load(filepath)
     vae_color_labels.load_state_dict(checkpoint['state_dict_color_labels'])
     for parameter in vae_color_labels.parameters():
         parameter.requires_grad = False
-    vae_color_labels.eval()
+    vae_color_labels.eval().to(device)
     return vae_color_labels
 
 

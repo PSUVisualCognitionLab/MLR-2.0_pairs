@@ -66,7 +66,7 @@ def classifier_train(vae, whichcomponent, train_dataset,whichlabel):
     #print(' Training'+ whichlabel + ' classification from the map ' + whichcomponent + ' using dataset' + dataname)
 
     vae.eval()
-    clf = svm.SVC(C=10, gamma='scale', kernel='rbf', probability= True)  # define the classifier for shape
+    clf = svm.SVC(C=10, gamma='scale', kernel='rbf', probability= True)  # define the classifier
     passin = 'digit'   #temporary until we fix this in activations
    
     labelindex = 0  #shape by default

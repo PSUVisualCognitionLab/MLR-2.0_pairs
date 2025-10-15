@@ -27,3 +27,6 @@ mnist_data_old
 *.meta
 *.log
 *.joblib
+.venv/
+.venv/bin/
+wandb/

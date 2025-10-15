@@ -19,7 +19,7 @@ from PIL import Image
 #internal imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from MLR_src.dataset_builder import Dataset, Colorize_specific
-import MLR_src.mVAE as mlr
+from MLR_src.mVAE import VAE_CNN
 from MLR_src.BP_functions import BPTokens_binding_all, BPTokens_retrieveByToken, BPTokens_storage, BPTokens_with_labels
 import random
 
@@ -86,7 +86,7 @@ def compute_correlation(x, y):
 # figures:
 
 @torch.no_grad()
-def fig_efficient_rep(vae, folder_path):
+def fig_efficient_rep(vae: VAE_CNN, folder_path: str):
     vae.eval()
     print('generating Figure efficient reconstruction plot')
     retina_size = 100
@@ -211,7 +211,7 @@ def fig_efficient_rep(vae, folder_path):
     plt.close()
 
 @torch.no_grad()
-def fig_repeat_recon(vae, folder_path):
+def fig_repeat_recon(vae: VAE_CNN, folder_path: str):
     vae.eval()
     print('generating Figure repeated reconstructions, blue 5, red 5, red 3')
     retina_size = 100
@@ -306,7 +306,7 @@ def fig_repeat_recon(vae, folder_path):
     save_image(imgmatrixMap, f'{folder_path}figure_repeat_Map.png',  nrow=numimg,        normalize=False) #,range=(-1, 1))
 
 @torch.no_grad()
-def fig_novel_representations(vae, folder_path):
+def fig_novel_representations(vae: VAE_CNN, folder_path: str):
     #from dataset_builder import Colorize_specific
     all_imgs = []
     print('generating Figure 2b, Novel characters retrieved from memory of L1 and Bottleneck')
@@ -380,7 +380,7 @@ def fig_novel_representations(vae, folder_path):
             nrow=numimg,            normalize=False,)
 
 @torch.no_grad()
-def fig_retinal_mod(vae, folder_path):
+def fig_retinal_mod(vae: VAE_CNN, folder_path: str):
     vae.eval()
     bs = 10
     mnist_transforms = {'retina':True, 'colorize':True, 'scale':True}
@@ -416,7 +416,7 @@ def fig_retinal_mod(vae, folder_path):
         nrow=bs, normalize=False)
 
 @torch.no_grad()
-def fig_visual_synthesis(vae, shape_label, s_classes, shape_classifier, folder_path):
+def fig_visual_synthesis(vae: VAE_CNN, shape_label, s_classes, shape_classifier, folder_path: str):
     bs = 2
     num1 = 3
     num2 = 15
@@ -455,3 +455,96 @@ def fig_visual_synthesis(vae, shape_label, s_classes, shape_classifier, folder_p
     save_image(img2, f'{folder_path}P.png')
 
     print(out_pred, out_prob)
+
+def build_gen_grid(joint_recons, shape_recons, color_recons, n):
+    grid_rows = []
+    empty_block = torch.zeros_like(joint_recons[0])
+
+    for i in range(n + 1):
+        row_blocks = []
+        for j in range(n + 1):
+            if i == 0 and j > 0:
+                block = shape_recons[j - 1]
+            elif j == 0 and i > 0:
+                block = color_recons[i - 1]
+            elif i == j:
+                block = joint_recons[i]
+            else:
+                block = empty_block
+
+            if block.dim() == 4 and block.shape[0] == 1:
+                block = block.squeeze(0)
+
+            row_blocks.append(block)
+
+        # concat horizontally
+        row = torch.cat(row_blocks, dim=2)
+        grid_rows.append(row)
+
+    # concat vertically
+    return torch.cat(grid_rows, dim=1)
+    
+
+@torch.no_grad()
+def fig_generative_noise(vae: VAE_CNN, shape_label, s_classes, color_label, c_classes, folder_path: str):
+    vae.eval()
+    print("generative noise plot")
+    bs = 2
+    x, y= 5, 5
+    num1 = 1
+    num2 = 6
+    device = next(vae.parameters()).device
+    shape_label.to(device)
+    num_labels = F.one_hot(torch.tensor([num1, num2]).to(device), num_classes=s_classes).float().to(device) # shape
+    col_labels = F.one_hot(torch.tensor([1, num2]).to(device), num_classes=c_classes).float().to(device) # color
+    print(num_labels.size())
+    z_shape_0 = shape_label(num_labels, 1)[0]
+    z_color_0 = color_label(col_labels, 1)[0]
+
+    # shape / color noising x: shape, y: color
+    recon_crop = vae.decoder_cropped(z_shape_0, z_color_0)
+    shape_color_base = recon_crop[0]
+
+    shape_recons = []
+    color_recons = []
+    joint_recons = [shape_color_base]
+
+    z_shape = z_shape_0.clone()
+    z_color = z_color_0.clone()
+    n = 9
+    for _ in range(0,n):
+        z_shape = z_shape + (0.5 * torch.randn_like(z_shape_0))
+        z_color = z_color + (0.8 * torch.randn_like(z_color_0))
+
+        recon_shape_m = vae.decoder_cropped(z_shape, z_color_0)
+        recon_color_m = vae.decoder_cropped(z_shape_0, z_color)
+        recon_crop_m = vae.decoder_cropped(z_shape, z_color)
+
+        shape_recons += [recon_shape_m]
+        color_recons += [recon_color_m]
+        joint_recons += [recon_crop_m]
+
+    
+    recon_grid = build_gen_grid(joint_recons, shape_recons, color_recons, n)
+    
+
+    #location = torch.tensor([[0.0, 0.0], [0.05, -0.2]]).view(bs,2).to(device)
+    #scale = torch.tensor([[2.5], [0.5]]).view(bs,1).to(device)
+    #rotation = torch.tensor([[4.0], [0.0]]).view(bs,1).to(device)
+    #theta = torch.cat([scale, location, rotation], 1)
+
+    '''recon = vae.decoder_retinal(z_shape, 0, theta, 'shape')
+
+    img1 = recon[0]
+    img2 = recon[1]
+    comb_img = torch.clamp(img1 + img2, 0, 0.5) * 1.5
+    comb_img = comb_img.view(1,3,64,64)
+
+    activations = vae.activations(comb_img, True, None, 'object')
+
+    recon_shape = vae.decoder_object(activations['shape'], 0, 0)
+    save_image(comb_img, f'{folder_path}D_P_sim.png')
+    save_image(recon_shape, f'{folder_path}D_P_sim_recon.png')
+    save_image(recon_crop, f'{folder_path}D_P_crop_recon.png')
+    save_image(img1, f'{folder_path}D.png')'''
+    save_image(recon_grid, f'{folder_path}sample.png', pad_value=0.6)

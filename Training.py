@@ -14,10 +14,9 @@ parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label
 parser.add_argument("--wandb", type=bool, default=False, help="Track training with wandb")
 parser.add_argument("--checkpoint_name", type=str, default='mVAE_checkpoint.pth', help="file name of checkpoint .pth")
 parser.add_argument("--start_ep", type=int, default=1, help="what epoch to resume training")
-parser.add_argument("--end_ep", type=int, default=300, help="what epoch to train to")
+parser.add_argument("--end_ep", type=int, default=600, help="what epoch to train to")
 #parser.add_argument("--batch_size", nargs='+', type=int, default=['mVAE', 'label_net', 'SVM'], help="Which components to train")
 args = parser.parse_args()
-
 
 
 # prerequisites
@@ -64,7 +63,7 @@ else:
     print('CUDA not available')
 
 bs=100   #batch size for training the main VAE
-SVM_bs = 2000  #batch size for training the spatial vision transformer
+SVM_bs = 20000  #batch size for training the svm classifiers
 obj_latent_flag = True   #this flag determines whether the VAE has an obj latent space
 
 

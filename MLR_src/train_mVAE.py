@@ -8,17 +8,20 @@ def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use
     if use_wandb is True:
         import wandb
         from MLR_src.wandb_setup import initialize_wandb, log_system_metrics
-        initialize_wandb('2d-retina-train', {'version':'MLR_2.0_2D_RETINA_STN'})
+        initialize_wandb('final-training', {'version':'MLR_2.0_2D_RETINA_STN'})
 
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     seen_labels = {}
         
-
+    components_no_skip = [s for s in components if "skip" not in s ]
     for epoch in range(start_epoch, epoch_count):
-        
+        if epoch < 0.7 * epoch_count:
+            components_list = components_no_skip
+        else:
+            components_list = components
+        #print("Components: ", components_list)
 
-        loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components, 600, checkpoint_folder)
-
+        loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components_list, 600, checkpoint_folder)
 
         if use_wandb is True:   #this connects with weights and biases.. a website that tracks loss data over time.  Currently inoperable due to version conflict
             wandb.log({
@@ -26,8 +29,11 @@ def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use
             'retinal/training_loss': loss_lst[0],
             'retinal/test_loss': loss_lst[1],
             'cropped/training_loss': loss_lst[2],
-            'cropped/test_loss': loss_lst[3]
+            'cropped/test_loss': loss_lst[3],
+            'cropped_skip/test_loss': loss_lst[4]
             })
+
+            log_system_metrics()
 
         torch.cuda.empty_cache()
         

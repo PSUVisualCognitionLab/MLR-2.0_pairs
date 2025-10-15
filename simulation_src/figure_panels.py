@@ -41,14 +41,13 @@ def addressability(vae, folder_path):
     pass
 
 @torch.no_grad()
-def generative(vae, folder_path):
+def generative(vae, shape_label, s_classes, color_label, c_classes, folder_path):
     folder_path = folder_path + "generative/"
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
 
     # TODO: implement fig_generative_noise()
-    #figures.fig_repeat_recon(vae, folder_path)
-    pass
+    figures.fig_generative_noise(vae, shape_label, s_classes, color_label, c_classes, folder_path)
 
 @torch.no_grad()
 def synthesis(vae, shape_label, s_classes, shape_classifier, folder_path):
@@ -66,4 +65,22 @@ def compositional(vae, folder_path):
         os.mkdir(folder_path)
 
     figures.fig_retinal_mod(vae, folder_path)
+    pass
+
+@torch.no_grad()
+def flexibility(vae, shape_label, s_classes, folder_path):
+    folder_path = folder_path + "flexibility/"
+    if not os.path.exists(folder_path):
+        os.mkdir(folder_path)
+
+    #figures.fig_retinal_mod(vae, folder_path)
+    pass
+
+@torch.no_grad()
+def holistic(vae, folder_path):
+    folder_path = folder_path + "holistic/"
+    if not os.path.exists(folder_path):
+        os.mkdir(folder_path)
+
+    #figures.fig_retinal_mod(vae, folder_path)
     pass

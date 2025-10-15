@@ -671,7 +671,7 @@ def progress_out(vae, data, checkpoint_folder,name):
     text_tensor = text_to_tensor("Image / both maps recon / skip recon / shape recon/color recon ",header_height,width)
     new_tensor[:, :header_height, :] = text_tensor
 
-    utils.save_image(new_tensor,f'training_samples/{checkpoint_folder}/cropped_sample{name}.png',
+    utils.save_image(new_tensor,f'training_samples/{checkpoint_folder}/cropped_sample_{name}.png',
             nrow=1, normalize=False)
    
 
@@ -689,6 +689,9 @@ def test_loss(vae, test_data, whichdecode = []):
             loss = loss_function(recon_batch, test_data, None)
         
         elif decoder == 'cropped':
+            loss = loss_function_crop(recon_batch, test_data[1])
+        
+        elif decoder == 'skip_cropped':
             loss = loss_function_crop(recon_batch, test_data[1])
         
         loss_dict[decoder] = loss.item()
@@ -801,10 +804,10 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             #demonstrate the quality of reconstructions of letters at specific locations and scales and colors on the retina
             if count >= 0.9*max_iter:
                 utils.save_image(
-                    torch.cat([data[0].view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
+                    torch.cat([data.view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
                                ], 0),
-                    f"training_samples/{checkpoint_folder}/retinal_recon_ColorLetter{epoch%3}.png",
+                    f"training_samples/{checkpoint_folder}/retinal_recon_ColorLetter{epoch%2}.png",
                     nrow=25, normalize=False)
 
         elif whichdecode_use == 'cropped': # cropped
@@ -825,10 +828,10 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             #demonstrate the quality of reconstructions of objects at specific locations and scales and colors on the retina
             if count >= 0.9*max_iter:
                 utils.save_image(
-                    torch.cat([data[0].view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
+                    torch.cat([data.view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
                                ], 0),
-                    f"training_samples/{checkpoint_folder}/retinal_recon_obj_{epoch%3}.png",
+                    f"training_samples/{checkpoint_folder}/retinal_recon_obj_{epoch%2}.png",
                     nrow=25, normalize=False)
         
         #l1_norm = sum(p.abs().sum() for p in vae.parameters())
@@ -850,13 +853,13 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             try:
             
                 test_data, labels = next(dataloaders['emnist-map'])
-                progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))
+                progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch%2))
             except:
                 print('Progress_out failed to create a training sample image for emnist')
                 pass
             try:
                 test_data, labels = next(dataloaders['quickdraw'])
-                progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch))
+                progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch%2))
             except:
                 print('Progress_out failed to create a training sample image for quickdraw')
                 pass
@@ -877,8 +880,8 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         try:
             test_data, test_labels = next(dataloaders['mnist-map'])
 
-            test_loss_dict = test_loss(vae, test_data, ['retinal', 'cropped'])
-            returnval = [retinal_loss_train, test_loss_dict['retinal'], cropped_loss_train, test_loss_dict['cropped']]
+            test_loss_dict = test_loss(vae, test_data, ['retinal', 'cropped', 'skip_cropped'])
+            returnval = [retinal_loss_train, test_loss_dict['retinal'], cropped_loss_train, test_loss_dict['cropped'], test_loss_dict['skip_cropped']]
         except:
             seen_labels = None
             returnval = [0,0,0,0]
