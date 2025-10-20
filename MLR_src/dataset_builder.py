@@ -255,22 +255,22 @@ def generate_offset_line_crop_image(image_size=(28, 28)):
     
     return image, angle_degrees
 
-DATA_PATH = './data'
-INDEX_CACHE_PATH = os.path.join(DATA_PATH, 'emnist_uppercase_indices.pt')
-
 UPPERCASE_LABEL_INDICES = list(range(10,36))
 LABEL_REMAP = {label: i for i, label in enumerate(UPPERCASE_LABEL_INDICES)}
 
 class UppercaseEMNIST(torch.utils.data.Dataset):
-    def __init__(self, root=DATA_PATH, train=True, transform=None):
+    
+
+    def __init__(self, root='./data/', train=True, transform=None):
         self.root = root
         self.train = train
+        INDEX_CACHE_PATH = os.path.join(root, 'emnist_uppercase_indices.pt')
 
         self.base = datasets.EMNIST(
             root=self.root,
             split='balanced',
             train=self.train,
-            download=True,
+            download=False,
             transform=torch_transforms.Compose([lambda img: torch_transforms.functional.rotate(img, -90),
             lambda img: torch_transforms.functional.hflip(img)])
         )
@@ -402,8 +402,9 @@ class Dataset(data.Dataset):
         self.target_dict = {'mnist':[0,9], 'emnist':[10,35], 'fashion_mnist':[36,45], 'cifar10':[0,9]} #[46,55]
 
     def _build_dataset(self, dataset, train=True):
+        DATASET_ROOT = '/home/bwyble/data/'
         if dataset == 'mnist':
-            base_dataset = datasets.MNIST(root='./data/', train=train, transform = None, download=True)
+            base_dataset = datasets.MNIST(root=DATASET_ROOT, train=train, transform = None, download=True)
 
         elif dataset == 'emnist':
             split = 'letters' #by_class
@@ -414,16 +415,16 @@ class Dataset(data.Dataset):
                 print('Filtering EMNIST dataset')
                 process_and_save_uppercase_emnist()'''
             
-            base_dataset = UppercaseEMNIST()
+            base_dataset = UppercaseEMNIST(DATASET_ROOT)
 
             #base_dataset = datasets.EMNIST(root='./data', split=split, train=train, transform=torch_transforms.Compose([lambda img: torch_transforms.functional.rotate(img, -90),
             #lambda img: torch_transforms.functional.hflip(img)]), download=True)
 
         elif dataset == 'fashion_mnist':
-            base_dataset = datasets.FashionMNIST('./fashionmnist_data/', train=train, transform = None, download=True)
+            base_dataset = datasets.FashionMNIST(f'{DATASET_ROOT}fashionmnist_data/', train=train, transform = None, download=False)
 
         elif dataset == 'cifar10':
-            base_dataset = datasets.CIFAR10(root='./data', train=train, download=True, transform=None)
+            base_dataset = datasets.CIFAR10(root=DATASET_ROOT, train=train, download=False, transform=None)
         
         elif dataset == 'square':
             base_dataset = None
@@ -432,10 +433,10 @@ class Dataset(data.Dataset):
             base_dataset = None
         
         elif dataset == 'quickdraw':
-            base_dataset = np.load('data/quickdraw_npy/full_numpy_bitmap_all_objs.npy')
+            base_dataset = np.load(f'{DATASET_ROOT}quickdraw_npy/full_numpy_bitmap_all_objs.npy')
         
         elif dataset == 'quickdraw_pairs':
-            base_dataset = np.load("data/quickdraw_pairs.npy")
+            base_dataset = np.load(f"{DATASET_ROOT}quickdraw_pairs.npy")
 
         elif os.path.exists(dataset):
             base_dataset = Image.open(rf'{dataset}')

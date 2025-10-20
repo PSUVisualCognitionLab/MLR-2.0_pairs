@@ -1,4 +1,5 @@
 colornames = ["red", "blue","green","purple","yellow","cyan","orange","brown","pink","teal"]
+object_names = ['airplane', 'bird', 'car', 'cat', 'dog', 'duck', 'frog', 'horse', 'sailboat', 'truck']
 
 # prerequisites
 import torch
@@ -45,7 +46,7 @@ colorLabel_coeff = 1  #coefficient of the color label
 location_coeff = 0  #coefficient of the color label
 
 bpsize = 10000#00         #size of the binding pool
-token_overlap =0.2
+token_overlap =0.4
 bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
 normalize_fact_familiar=1
@@ -416,7 +417,8 @@ def fig_retinal_mod(vae: VAE_CNN, folder_path: str):
         nrow=bs, normalize=False)
 
 @torch.no_grad()
-def fig_visual_synthesis(vae: VAE_CNN, shape_label, s_classes, shape_classifier, folder_path: str):
+def fig_visual_synthesis(vae: VAE_CNN, shape_label, s_classes, object_classifier, folder_path: str):
+    vae.eval()
     bs = 2
     num1 = 3
     num2 = 15
@@ -428,8 +430,8 @@ def fig_visual_synthesis(vae: VAE_CNN, shape_label, s_classes, shape_classifier,
 
     recon_crop = vae.decoder_shape(z_shape)
 
-    location = torch.tensor([[0.0, 0.0], [0.05, -0.2]]).view(bs,2).to(device)
-    scale = torch.tensor([[2.5], [0.5]]).view(bs,1).to(device)
+    location = torch.tensor([[0.0, 0.0], [0.05, -0.3]]).view(bs,2).to(device)
+    scale = torch.tensor([[3.1], [0.5]]).view(bs,1).to(device)
     rotation = torch.tensor([[4.0], [0.0]]).view(bs,1).to(device)
     theta = torch.cat([scale, location, rotation], 1)
 
@@ -442,9 +444,9 @@ def fig_visual_synthesis(vae: VAE_CNN, shape_label, s_classes, shape_classifier,
 
     activations = vae.activations(comb_img, True, None, 'object')
 
-    pred_ss = shape_classifier.predict(activations['shape'].cpu())
+    pred_ss = object_classifier.predict(activations['shape'].cpu())
     out_pred = pred_ss[0].item() # predicted character
-    pred_prob = shape_classifier.predict_proba(activations['shape'].cpu())
+    pred_prob = object_classifier.predict_proba(activations['shape'].cpu())
     out_prob = pred_prob[0][out_pred]
 
     recon_shape = vae.decoder_object(activations['shape'], 0, 0)
@@ -454,7 +456,7 @@ def fig_visual_synthesis(vae: VAE_CNN, shape_label, s_classes, shape_classifier,
     save_image(img1, f'{folder_path}D.png')
     save_image(img2, f'{folder_path}P.png')
 
-    print(out_pred, out_prob)
+    print(object_names[out_pred], out_pred, out_prob)
 
 def build_gen_grid(joint_recons, shape_recons, color_recons, n):
     grid_rows = []
@@ -514,7 +516,7 @@ def fig_generative_noise(vae: VAE_CNN, shape_label, s_classes, color_label, c_cl
     n = 9
     for _ in range(0,n):
         z_shape = z_shape + (0.5 * torch.randn_like(z_shape_0))
-        z_color = z_color + (0.8 * torch.randn_like(z_color_0))
+        z_color = z_color + (1 * torch.randn_like(z_color_0))
 
         recon_shape_m = vae.decoder_cropped(z_shape, z_color_0)
         recon_color_m = vae.decoder_cropped(z_shape_0, z_color)

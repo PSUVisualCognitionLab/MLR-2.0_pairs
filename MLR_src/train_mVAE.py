@@ -13,10 +13,11 @@ def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     seen_labels = {}
         
-    components_no_skip = [s for s in components if "skip" not in s ]
+    #components_no_skip = [s for s in components if "skip" not in s  ]
+    components_no_ret = [s for s in components if "retina" not in s ]
     for epoch in range(start_epoch, epoch_count):
-        if epoch < 0.7 * epoch_count:
-            components_list = components_no_skip
+        if epoch > 60:
+            components_list = components_no_ret
         else:
             components_list = components
         #print("Components: ", components_list)

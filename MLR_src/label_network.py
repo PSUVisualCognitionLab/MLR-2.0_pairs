@@ -19,7 +19,7 @@ bs = 100
 s_classes = 36
 c_classes = 10
 
-def train_labelnet(dataloaders, vae, epoch_count, checkpoint_folder):
+def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder):
     if not os.path.exists('training_samples/'):
         os.mkdir('training_samples/')
     
@@ -29,6 +29,10 @@ def train_labelnet(dataloaders, vae, epoch_count, checkpoint_folder):
     sample_folder_path = f'training_samples/{checkpoint_folder}/label_net_samples/'
     if not os.path.exists(sample_folder_path):
         os.mkdir(sample_folder_path)
+    
+    vae_shape_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=z_dim)
+    vae_object_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=z_dim)
+    vae_color_labels= VAEcolorlabels(xlabel_dim=10, hlabel_dim=7,  zlabel_dim=z_dim)
 
     optimizer_shapelabels= optim.Adam(vae_shape_labels.parameters())
     optimizer_colorlabels= optim.Adam(vae_color_labels.parameters())
@@ -55,6 +59,7 @@ def train_labelnet(dataloaders, vae, epoch_count, checkpoint_folder):
             'optimizer_color': optimizer_colorlabels.state_dict(),
             'optimizer_object': optimizer_objectlabels.state_dict(),
 
+            'z_dim': z_dim
                 }
     torch.save(checkpoint, f'checkpoints/{checkpoint_folder}/label_network_checkpoint.pth')
 
@@ -105,48 +110,29 @@ class VAEcolorlabels(nn.Module):
         z_color_label = self.sampling_labels(mu_shape_label, log_var_shape_label, n)
         return  z_color_label
 
-vae_shape_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=8)
-vae_object_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=8)
-vae_color_labels= VAEcolorlabels(xlabel_dim=10, hlabel_dim=7,  zlabel_dim=8)
-if torch.cuda.is_available():
-    vae_shape_labels.cuda()
-    vae_color_labels.cuda()
-    print('CUDA')
+def load_checkpoint_labels(filepath, label_type, d=0):
+    assert label_type in ["shape", "color", "object"], f"label_type: {label_type} is invalid, must be one of: shape, color, object"
+    print(f"loading {label_type} label network")
 
-def image_recon(z_labels):
-    with torch.no_grad():
-        vae.eval()
-        output=vae.decoder_noskip(z_labels)
-    return output
-
-def load_checkpoint_shapelabels(filepath, d=0):
     if torch.cuda.is_available():
         device = torch.device(f'cuda:{d}')
         torch.cuda.set_device(d)
     else:
         device = 'cpu'
-    
-    checkpoint = torch.load(filepath)
-    vae_shape_labels.load_state_dict(checkpoint['state_dict_shape_labels'])
-    for parameter in vae_shape_labels.parameters():
-        parameter.requires_grad = False
-    vae_shape_labels.eval().to(device)
-    return vae_shape_labels
 
-def load_checkpoint_colorlabels(filepath, d=0):
-    if torch.cuda.is_available():
-        device = torch.device(f'cuda:{d}')
-        torch.cuda.set_device(d)
-    else:
-        device = 'cpu'
-    
     checkpoint = torch.load(filepath)
-    vae_color_labels.load_state_dict(checkpoint['state_dict_color_labels'])
-    for parameter in vae_color_labels.parameters():
-        parameter.requires_grad = False
-    vae_color_labels.eval().to(device)
-    return vae_color_labels
+    z_dim = checkpoint['z_dim']
 
+    label_net_dict = {"shape":VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=z_dim), 
+                      "object": VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=z_dim),
+                      "color": VAEcolorlabels(xlabel_dim=10, hlabel_dim=7,  zlabel_dim=z_dim)}
+    
+    label_net = label_net_dict[label_type]
+    label_net.load_state_dict(checkpoint[f'state_dict_{label_type}_labels'])
+    for parameter in label_net.parameters():
+        parameter.requires_grad = False
+    label_net.eval().to(device)
+    return label_net
 
 def loss_label(label_act,image_act):
 
