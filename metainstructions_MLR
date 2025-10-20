@@ -7,3 +7,16 @@ Activate torchenv37 first
 
 How to run plotting
 python plotting.py --c_folder stn_quickdraw_mnist  --run_name Brad
+
+
+
+Making the venv:
+python -m venv .venv
+conda deactivate
+
+source .venv/bin/activate
+upgrade pip
+
+pip3 install torchvision torch
+pip install tqdm scikit-learn matplotlib wandb
+
