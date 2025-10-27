@@ -1,5 +1,6 @@
 colornames = ["red", "blue","green","purple","yellow","cyan","orange","brown","pink","teal"]
 object_names = ['airplane', 'bird', 'car', 'cat', 'dog', 'duck', 'frog', 'horse', 'sailboat', 'truck']
+DATASET_ROOT = '/home/bwyble/data/'
 
 # prerequisites
 import torch
@@ -140,8 +141,9 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str):
         mnist_color_act = mnist_act['color']
 
         emnist_l1_act = emnist_act['skip']
+        mnist_object_act = mnist_act['object']
 
-        BP_activations_sc_2 = {'shape': [mnist_shape_act[:n_2].view(n_2,-1), 1], 'color': [mnist_color_act[:n_2].view(n_2,-1), 1]} # 2 familiar in shape/color
+        BP_activations_sc_2 = {'shape': [mnist_shape_act[:n_2].view(n_2,-1), 1], 'color': [mnist_color_act[:n_2].view(n_2,-1), 1], 'object': [mnist_object_act[:n_2].view(n_2, -1), 1]} # 2 familiar in shape/color
         BP_activations_l1_2 = {'l1': [emnist_l1_act[:n_2].view(n_2,-1), 1]} # 2 novel in L1
 
         BP_activations_sc_4 = {'shape': [mnist_shape_act.view(n_4,-1), 1], 'color': [mnist_color_act.view(n_4,-1), 1]} # 4 familiar in shape/color
@@ -151,6 +153,7 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str):
         BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc_2, n_2,normalize_fact_novel)
         BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc_2, n_2,normalize_fact_novel)
         shape_out_2, color_out_2 = BP_activations_out['shape'], BP_activations_out['color']
+        object_out_2 = BP_activations_out['object']
 
         # store and retrieve 2 novel l1 act
         BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1_2, n_2,normalize_fact_novel)
@@ -167,6 +170,7 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str):
         BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1_4, n_4,normalize_fact_novel)
         l1_out_4 = BP_activations_out['l1']
         
+        recon_object_2 = vae.decoder_object(object_out_2,0,0).cuda()
         recon_sc_2 = vae.decoder_cropped(shape_out_2, color_out_2,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_2, 0))#
         recon_l1_2 = vae.decoder_skip_cropped(0, 0, 0, l1_out_2).cuda()
 
@@ -198,7 +202,7 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str):
 
     save_image(
         torch.cat([mnist_sample, torch.cat([recon_sc_2, e, e, e], 0), recon_sc_4, emnist_sample,
-                   torch.cat([recon_l1_2, e, e, e], 0), recon_l1_4], 0),
+                   torch.cat([recon_l1_2, e, e, e], 0), recon_l1_4, torch.cat([recon_object_2, e, e, e], 0)], 0),
         f'{folder_path}efficient_recon_sample.png', pad_value=0.6,
         nrow=n_4, normalize=False)
 
@@ -318,7 +322,7 @@ def fig_novel_representations(vae: VAE_CNN, folder_path: str):
     #load in some examples of Bengali Characters
     for i in range (1,numimg+1):
         color = Colorize_specific(random.randint(0,9))
-        img = Image.open(f'data/current_bengali/{i}_thick.png')# Image.open(f'change_image_{i}.png') #
+        img = Image.open(f'{DATASET_ROOT}current_bengali/{i}_thick.png')# Image.open(f'change_image_{i}.png') #
         img = img.resize((28, 28))
         img_new = color(img)   # Currently broken, but would add a color to each
         img_new = convert_tensor(img_new)[0:3,:,:]

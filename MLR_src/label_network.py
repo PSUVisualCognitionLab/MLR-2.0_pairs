@@ -121,7 +121,10 @@ def load_checkpoint_labels(filepath, label_type, d=0):
         device = 'cpu'
 
     checkpoint = torch.load(filepath)
-    z_dim = checkpoint['z_dim']
+    if 'z_dim' not in checkpoint:
+        z_dim = 8
+    else:
+        z_dim = checkpoint['z_dim']
 
     label_net_dict = {"shape":VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=z_dim), 
                       "object": VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=z_dim),
