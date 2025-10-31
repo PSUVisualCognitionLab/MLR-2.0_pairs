@@ -58,6 +58,12 @@ imgsize = 28
 BP_std = 0
 
 # helper functions:
+def location_to_onehot(locations):
+    pass
+
+def onehot_to_location(onehots):
+    pass
+
 def compute_correlation(x, y):
     assert x.shape == y.shape, "Tensors must have the same shape"
     
@@ -316,6 +322,9 @@ def fig_novel_representations(vae: VAE_CNN, folder_path: str):
     imgsize = 28
     numimg = 6
     vae.eval()
+    bpsize = 25000#00         #size of the binding pool
+    token_overlap =0.35
+    bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
     #load in some examples of Bengali Characters
     for i in range (1,numimg+1):
         color = Colorize_specific(random.randint(0,9))
@@ -695,7 +704,7 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str):
     numimg = 2
 
     bpsize = 25000#00         #size of the binding pool
-    token_overlap =0.1
+    token_overlap =0.35
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
     dataset = Dataset('mnist',{'retina':True, 'colorize':True, 'rotate':False, 'scale':True}, train=False)

@@ -26,6 +26,17 @@ colorvals = [
     [1-colorrange,1-colorrange,1-colorrange]
 ]
 
+def _load_memmap(path: str) -> np.memmap:
+    arr = np.load(path, mmap_mode="r")
+    if arr.ndim == 2 and arr.shape[1] == 784:
+        return arr
+    if arr.ndim == 3 and arr.shape[1:] == (28, 28):
+        return arr
+    raise ValueError(f"Unexpected shape in {path}: {arr.shape}")
+
+def _ensure_28x28_uint8(a: np.ndarray) -> np.ndarray:
+    return a.reshape(28, 28) if a.ndim == 1 else a
+
 class RandomRotate90:
     """
     Rotate a PIL image or torch Tensor by k * 90°   with k ∈ {0,1,2,3}.
@@ -396,6 +407,12 @@ class Dataset(data.Dataset):
                 self.retina = False
         else:
             self.skip = False
+        
+        # initialize pair classes for quickdraw_pairs
+        if 'pair_classes' in transforms:
+            self.pair_classes = transforms['pair_classes']
+        else:
+            self.pair_classes = None
 
         self.no_color_3dim = No_Color_3dim()
         self.totensor = ToTensor()
@@ -436,7 +453,15 @@ class Dataset(data.Dataset):
             base_dataset = np.load(f'{DATASET_ROOT}quickdraw_npy/full_numpy_bitmap_all_objs.npy')
         
         elif dataset == 'quickdraw_pairs':
-            base_dataset = np.load(f"{DATASET_ROOT}quickdraw_pairs.npy")
+            base_dataset = {}
+            for c in self.pair_classes:
+                p = self.dir / f"{c}.npy"
+                if not p.exists():
+                    alt = self.dir / f"{c}.npy"
+                    p = alt if alt.exists() else p
+                if not p.exists():
+                    raise FileNotFoundError(p)
+                base_dataset[c] = _load_memmap(p)
 
         elif os.path.exists(dataset):
             base_dataset = Image.open(rf'{dataset}')
@@ -467,7 +492,23 @@ class Dataset(data.Dataset):
         elif self.name == 'quickdraw':
             image = Image.fromarray(self.dataset[index, :-1].reshape(28, 28))  # image
             target = int(self.dataset[index, -1])  # label
-            #print(target)
+        
+        elif self.name == 'quickdraw_pairs':
+            class_pair = random.choice(self.pair_classes)
+            pair_idx = index % len(self.pair_classes)
+            l_name, r_name = self.pair_classes[pair_idx]
+            la, ra = self._arrays[l_name], self._arrays[r_name]
+
+            rng = self._rng(index)
+            li = rng.integers(0, la.shape[0])
+            ri = rng.integers(0, ra.shape[0])
+
+            l = _ensure_28x28_uint8(la[li])
+            r = _ensure_28x28_uint8(ra[ri])
+
+            l = torch.from_numpy(l).unsqueeze(0)  # (1,28,28) uint8
+            r = torch.from_numpy(r).unsqueeze(0)  # (1,28,28) uint8
+            target = pair_idx  # label
 
         elif type(self.dataset) != Image.Image:
             image, target = self.dataset[index]
