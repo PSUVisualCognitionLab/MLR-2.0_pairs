@@ -1,4 +1,4 @@
-from simulation_src.figure_panels import individuated, interference, novel, addressability, generative, synthesis, compositional
+from simulation_src.figure_panels import individuated, interference, novel, addressability, generative, synthesis, compositional, flexibility
 from MLR_src.mVAE import load_checkpoint
 from MLR_src.label_network import load_checkpoint_labels, s_classes, c_classes
 import torch
@@ -45,3 +45,4 @@ addressability(vae, simulation_folder_path)
 generative(vae, vae_shape_labels, s_classes, vae_color_labels, c_classes, simulation_folder_path)
 synthesis(vae, vae_shape_labels, s_classes, clf_objectS, simulation_folder_path)
 compositional(vae, simulation_folder_path)
+flexibility(vae, simulation_folder_path)

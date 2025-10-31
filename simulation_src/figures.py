@@ -46,8 +46,8 @@ shapeLabel_coeff= 1   #coefficient of the shape label
 colorLabel_coeff = 1  #coefficient of the color label
 location_coeff = 0  #coefficient of the color label
 
-bpsize = 10000#00         #size of the binding pool
-token_overlap =0.4
+bpsize = 25000#00         #size of the binding pool
+token_overlap =0.1
 bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
 normalize_fact_familiar=1
@@ -141,9 +141,8 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str):
         mnist_color_act = mnist_act['color']
 
         emnist_l1_act = emnist_act['skip']
-        mnist_object_act = mnist_act['object']
 
-        BP_activations_sc_2 = {'shape': [mnist_shape_act[:n_2].view(n_2,-1), 1], 'color': [mnist_color_act[:n_2].view(n_2,-1), 1], 'object': [mnist_object_act[:n_2].view(n_2, -1), 1]} # 2 familiar in shape/color
+        BP_activations_sc_2 = {'shape': [mnist_shape_act[:n_2].view(n_2,-1), 1], 'color': [mnist_color_act[:n_2].view(n_2,-1), 1]} # 2 familiar in shape/color
         BP_activations_l1_2 = {'l1': [emnist_l1_act[:n_2].view(n_2,-1), 1]} # 2 novel in L1
 
         BP_activations_sc_4 = {'shape': [mnist_shape_act.view(n_4,-1), 1], 'color': [mnist_color_act.view(n_4,-1), 1]} # 4 familiar in shape/color
@@ -153,7 +152,6 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str):
         BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc_2, n_2,normalize_fact_novel)
         BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc_2, n_2,normalize_fact_novel)
         shape_out_2, color_out_2 = BP_activations_out['shape'], BP_activations_out['color']
-        object_out_2 = BP_activations_out['object']
 
         # store and retrieve 2 novel l1 act
         BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1_2, n_2,normalize_fact_novel)
@@ -170,7 +168,6 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str):
         BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1_4, n_4,normalize_fact_novel)
         l1_out_4 = BP_activations_out['l1']
         
-        recon_object_2 = vae.decoder_object(object_out_2,0,0).cuda()
         recon_sc_2 = vae.decoder_cropped(shape_out_2, color_out_2,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_2, 0))#
         recon_l1_2 = vae.decoder_skip_cropped(0, 0, 0, l1_out_2).cuda()
 
@@ -202,7 +199,7 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str):
 
     save_image(
         torch.cat([mnist_sample, torch.cat([recon_sc_2, e, e, e], 0), recon_sc_4, emnist_sample,
-                   torch.cat([recon_l1_2, e, e, e], 0), recon_l1_4, torch.cat([recon_object_2, e, e, e], 0)], 0),
+                   torch.cat([recon_l1_2, e, e, e], 0), recon_l1_4,], 0),
         f'{folder_path}efficient_recon_sample.png', pad_value=0.6,
         nrow=n_4, normalize=False)
 
@@ -554,3 +551,203 @@ def fig_generative_noise(vae: VAE_CNN, shape_label, s_classes, color_label, c_cl
     save_image(recon_crop, f'{folder_path}D_P_crop_recon.png')
     save_image(img1, f'{folder_path}D.png')'''
     save_image(recon_grid, f'{folder_path}sample.png', pad_value=0.6)
+
+@torch.no_grad()
+def fig_binding_addressability(vae: VAE_CNN, folder_path: str):
+    vae.eval()
+    print("addressability figure")
+    # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that as a cue
+    numimg = 2
+
+    bpsize = 25000        #size of the binding pool
+    token_overlap =0.3
+    bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
+
+    dataset = Dataset('mnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True}, train=False)
+    test_loader = dataset.get_loader(numimg)
+    dataiter = iter(test_loader)
+    imgs = next(dataiter)[0].cuda()
+
+    # greyscale
+    weights = torch.tensor([0.2989, 0.5870, 0.1140], device=imgs.device).view(1, 3, 1, 1)
+    grey = (imgs * weights).sum(dim=1, keepdim=True)  # [B, 1, H, W]
+    grey_imgs = grey.repeat(1, 3, 1, 1)
+
+    #push the images through the encoder
+    activations = vae.activations(imgs.view(-1,3,imgsize, imgsize), False)
+    shape_act = activations['shape']
+    color_act = activations['color']
+
+    grey_activations = vae.activations(grey_imgs.view(-1,3,imgsize, imgsize), False)
+    grey_shape_act = grey_activations['shape']
+    
+    BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1], 'color': [color_act.view(numimg,-1), 1]}
+    
+    #now store digits
+    BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_fact_novel)
+    
+    BPOut_cued = BPOut.clone()
+    # cue by greyscale shape activation of first image
+    tokenactivation = torch.zeros(numimg)
+    notLink_all = Tokenbindings[0]
+    shape_fw = Tokenbindings[1]
+    BP_reactivate = torch.mm(grey_shape_act[0].view(1, -1),shape_fw)
+    BP_reactivate = BP_reactivate  * BPOut
+
+    for tokens in range(numimg):  # for each token
+        BP_reactivate_tok = BP_reactivate.clone()
+        BP_reactivate_tok[0,notLink_all[tokens, :]] = 0  # set the BPs to zero for this token retrieval
+        # for this demonstration we're assuming that all BP-> token weights are equal to one, so we can just sum the
+        # remaining binding pool neurons to get the token activation
+        tokenactivation[tokens] = BP_reactivate_tok.sum()
+
+    max, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
+    BPOut_cued[0, notLink_all[maxtoken, :]] = 0
+
+    BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+    BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+    
+    shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
+    shape_out_BP_cued, color_out_BP_cued = BP_act_out_cued['shape'], BP_act_out_cued['color']
+    BP_cropped_recon = vae.decoder_cropped(shape_out_BP, color_out_BP)
+    BP_cropped_recon_cued = vae.decoder_cropped(shape_out_BP_cued, color_out_BP_cued)
+    empty = torch.zeros(1,3,imgsize,imgsize).cuda()
+    grey_cue = torch.cat([grey_imgs[0].view(1,3,imgsize,imgsize), empty]).view(numimg, 3, imgsize, imgsize)
+    BP_cropped_recon_cued = torch.cat([BP_cropped_recon_cued[0].view(1,3,imgsize,imgsize), empty]).view(numimg, 3, imgsize, imgsize)
+    sample = imgs[0: numimg].view(numimg, 3, imgsize, imgsize)
+
+    #save an image showing:  original images, reconstructions directly from L1,  from L1 BP, from L1 BP through bottleneck, from maps BP
+    save_image(torch.cat([sample, BP_cropped_recon, grey_cue, BP_cropped_recon_cued], 0), f'{folder_path}addressability.png',
+            nrow=numimg, normalize=False, pad_value=0.6)
+
+@torch.no_grad()
+def fig_feature_swap(vae: VAE_CNN, folder_path: str):
+    vae.eval()
+    print("addressability figure")
+    # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that as a cue
+    numimg = 2
+
+    bpsize = 25000        #size of the binding pool
+    token_overlap =0.3
+    bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
+
+    dataset = Dataset('mnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True}, train=False)
+    test_loader = dataset.get_loader(numimg)
+    dataiter = iter(test_loader)
+    imgs = next(dataiter)[0].cuda()
+
+    # greyscale
+    weights = torch.tensor([0.2989, 0.5870, 0.1140], device=imgs.device).view(1, 3, 1, 1)
+    grey = (imgs * weights).sum(dim=1, keepdim=True)  # [B, 1, H, W]
+    grey_imgs = grey.repeat(1, 3, 1, 1)
+
+    #push the images through the encoder
+    activations = vae.activations(imgs.view(-1,3,imgsize, imgsize), False)
+    shape_act = activations['shape']
+    color_act = activations['color']
+
+    grey_activations = vae.activations(grey_imgs.view(-1,3,imgsize, imgsize), False)
+    grey_shape_act = grey_activations['shape']
+    
+    BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1], 'color': [color_act.view(numimg,-1), 1]}
+    
+    #now store digits
+    BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_fact_novel)
+    
+    BPOut_cued = BPOut.clone()
+    # cue by greyscale shape activation of first image
+    tokenactivation = torch.zeros(numimg)
+    notLink_all = Tokenbindings[0]
+    shape_fw = Tokenbindings[1]
+    BP_reactivate = torch.mm(grey_shape_act[0].view(1, -1),shape_fw)
+    BP_reactivate = BP_reactivate  * BPOut
+
+    for tokens in range(numimg):  # for each token
+        BP_reactivate_tok = BP_reactivate.clone()
+        BP_reactivate_tok[0,notLink_all[tokens, :]] = 0  # set the BPs to zero for this token retrieval
+        # for this demonstration we're assuming that all BP-> token weights are equal to one, so we can just sum the
+        # remaining binding pool neurons to get the token activation
+        tokenactivation[tokens] = BP_reactivate_tok.sum()
+
+    max, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
+    BPOut_cued[0, notLink_all[maxtoken, :]] = 0
+
+    BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+    BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+    
+    shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
+    shape_out_BP_cued, color_out_BP_cued = BP_act_out_cued['shape'], BP_act_out_cued['color']
+    BP_cropped_recon = vae.decoder_cropped(shape_out_BP, color_out_BP)
+    BP_cropped_recon_cued = vae.decoder_cropped(shape_out_BP_cued, color_out_BP_cued)
+    empty = torch.zeros(1,3,imgsize,imgsize).cuda()
+    grey_cue = torch.cat([grey_imgs[0].view(1,3,imgsize,imgsize), empty]).view(numimg, 3, imgsize, imgsize)
+    BP_cropped_recon_cued = torch.cat([BP_cropped_recon_cued[0].view(1,3,imgsize,imgsize), empty]).view(numimg, 3, imgsize, imgsize)
+    sample = imgs[0: numimg].view(numimg, 3, imgsize, imgsize)
+
+    #save an image showing:  original images, reconstructions directly from L1,  from L1 BP, from L1 BP through bottleneck, from maps BP
+    save_image(torch.cat([sample, BP_cropped_recon, grey_cue, BP_cropped_recon_cued], 0), f'{folder_path}addressability.png',
+            nrow=numimg, normalize=False, pad_value=0.6)
+
+@torch.no_grad()
+def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str):
+    vae.eval()
+    print("encoding flexibility figure")
+    numimg = 2
+
+    bpsize = 25000#00         #size of the binding pool
+    token_overlap =0.1
+    bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
+
+    dataset = Dataset('mnist',{'retina':True, 'colorize':True, 'rotate':False, 'scale':True}, train=False)
+    test_loader = dataset.get_loader(numimg)
+    dataiter = iter(test_loader)
+    imgs = next(dataiter)[0][0].cuda()
+
+    #push the images through the encoder
+    activations = vae.activations(imgs.view(-1,3,64,64), True)
+    shape_act = activations['shape']
+    color_act = activations['color']
+    location_act = activations['location']
+    scale_act = activations['scale']
+    
+    color_degraded = []
+    shape_degraded = []
+    
+    # degrade shape encoding weight: 1 -> 0.2
+    for n in range (1,10,2):
+        BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1/n], 'color': [color_act.view(numimg,-1), 1], 
+                             'location': [location_act.view(numimg,-1), 1], 'scale': [scale_act.view(numimg,-1), 1]}
+        
+        #now store/retrieve from L1
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg,normalize_fact_novel)
+        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg,normalize_fact_novel)
+        
+        shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
+        location_out_BP, scale_out_BP = BP_act_out['location'], BP_act_out['scale']
+
+        theta = torch.cat([scale_out_BP, location_out_BP], 1)
+        BP_retinal_recon = vae.decoder_retinal(shape_out_BP, color_out_BP, theta)
+        shape_degraded += [BP_retinal_recon]
+    
+    # degrade color encoding weight: 1 -> 0.2
+    for n in range (1,10,2):
+        BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1], 'color': [color_act.view(numimg,-1), 1/n], 
+                             'location': [location_act.view(numimg,-1), 1], 'scale': [scale_act.view(numimg,-1), 1]}
+        
+        #now store/retrieve from L1
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg,normalize_fact_novel)
+        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg,normalize_fact_novel)
+        
+        shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
+        location_out_BP, scale_out_BP = BP_act_out['location'], BP_act_out['scale']
+
+        theta = torch.cat([scale_out_BP, location_out_BP], 1)
+        BP_retinal_recon = vae.decoder_retinal(shape_out_BP, color_out_BP, theta)
+        color_degraded += [BP_retinal_recon]
+    degraded = [x for pair in zip(shape_degraded, color_degraded) for x in pair]
+    degraded = torch.cat(degraded,0)
+    sample = imgs[0: numimg].view(numimg, 3, 64, 64)
+
+    #save an image showing:  original images, reconstructions directly from L1,  from L1 BP, from L1 BP through bottleneck, from maps BP
+    save_image(torch.cat([sample, sample, degraded], 0), f'{folder_path}figure2b.png',
+            nrow=numimg*2, normalize=False, pad_value=0.6)

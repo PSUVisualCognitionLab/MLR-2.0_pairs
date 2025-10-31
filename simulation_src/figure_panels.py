@@ -9,6 +9,7 @@ def interference(vae, folder_path):
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
 
+    figures.fig_feature_swap(vae, folder_path)
     figures.fig_efficient_rep(vae, folder_path)
     pass
 
@@ -36,9 +37,7 @@ def addressability(vae, folder_path):
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
 
-    # TODO: implement fig_addressable()
-    #figures.fig_novel_representations(vae, folder_path)
-    pass
+    figures.fig_binding_addressability(vae, folder_path)
 
 @torch.no_grad()
 def generative(vae, shape_label, s_classes, color_label, c_classes, folder_path):
@@ -56,7 +55,6 @@ def synthesis(vae, shape_label, s_classes, shape_classifier, folder_path):
         os.mkdir(folder_path)
 
     figures.fig_visual_synthesis(vae, shape_label, s_classes, shape_classifier, folder_path)
-    pass
 
 @torch.no_grad()
 def compositional(vae, folder_path):
@@ -65,16 +63,14 @@ def compositional(vae, folder_path):
         os.mkdir(folder_path)
 
     figures.fig_retinal_mod(vae, folder_path)
-    pass
 
 @torch.no_grad()
-def flexibility(vae, shape_label, s_classes, folder_path):
+def flexibility(vae, folder_path):
     folder_path = folder_path + "flexibility/"
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
 
-    #figures.fig_retinal_mod(vae, folder_path)
-    pass
+    figures.fig_encoding_flexibility(vae, folder_path)
 
 @torch.no_grad()
 def holistic(vae, folder_path):
