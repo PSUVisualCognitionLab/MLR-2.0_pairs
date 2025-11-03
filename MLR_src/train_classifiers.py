@@ -40,24 +40,24 @@ def train_classifiers(dataloaders, vae, checkpoint_folder):
 
 
     print('training object data on color map using color labels')   #this should be high
-    clf_occ = classifier_train(vae, 'color', dataloaders['quickdraw'], 'color')
+    clf_occ = classifier_train(vae, 'color', dataloaders['quickdraw-map'], 'color')
     dump(clf_occ, f'checkpoints/{checkpoint_folder}/occ.joblib')
-    pred_occ,  coreport = classifier_test(vae, 'color', clf_occ, dataloaders['quickdraw'],'quickdraw','color', 1)
+    pred_occ,  coreport = classifier_test(vae, 'color', clf_occ, dataloaders['quickdraw-map'],'quickdraw','color', 1)
 
     print('training object data on object map using object labels')  #this should be high
-    clf_ooo = classifier_train(vae, 'object', dataloaders['quickdraw'],'object')
+    clf_ooo = classifier_train(vae, 'object', dataloaders['quickdraw-map'],'object')
     dump(clf_ooo, f'checkpoints/{checkpoint_folder}/ooo.joblib')
-    pred_ooo,  oooreport = classifier_test(vae, 'object', clf_ooo, dataloaders['quickdraw'],'quickdraw','object', 1)
+    pred_ooo,  oooreport = classifier_test(vae, 'object', clf_ooo, dataloaders['quickdraw-map'],'quickdraw','object', 1)
 
     print('training object data on color map using object labels')   #this should be low but above chance
-    clf_oco = classifier_train(vae, 'color', dataloaders['quickdraw'],'object')
+    clf_oco = classifier_train(vae, 'color', dataloaders['quickdraw-map'],'object')
     dump(clf_oco, f'checkpoints/{checkpoint_folder}/oco.joblib')
-    pred_oco,  coreport = classifier_test(vae, 'color', clf_oco, dataloaders['quickdraw'],'quickdraw','object' ,1)
+    pred_oco,  coreport = classifier_test(vae, 'color', clf_oco, dataloaders['quickdraw-map'],'quickdraw','object' ,1)
 
 #how to load a classifier
     print('test object data on color map using color labels')   #this should be high
     clf_occ = joblib.load(f'checkpoints/{checkpoint_folder}/occ.joblib')
-    pred_occ,  coreport = classifier_test(vae, 'color', clf_occ, dataloaders['quickdraw'],'quickdraw','color', 1)
+    pred_occ,  coreport = classifier_test(vae, 'color', clf_occ, dataloaders['quickdraw-map'],'quickdraw','color', 1)
 
 
 

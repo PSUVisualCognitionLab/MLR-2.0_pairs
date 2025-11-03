@@ -8,7 +8,7 @@ def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use
     if use_wandb is True:
         import wandb
         from MLR_src.wandb_setup import initialize_wandb, log_system_metrics
-        initialize_wandb('final-training', {'version':'MLR_2.0_2D_RETINA_STN'})
+        initialize_wandb('final-training', {'version':'MLR_2.0_2D_RETINA_STN'}, checkpoint_folder)
 
     optimizer = optim.Adam(vae.parameters(), lr=0.0001)
     seen_labels = {}

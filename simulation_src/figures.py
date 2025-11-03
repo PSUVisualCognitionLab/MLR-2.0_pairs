@@ -17,6 +17,7 @@ import math
 from scipy import stats
 import gc
 from PIL import Image
+from itertools import cycle
 
 #internal imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -631,71 +632,131 @@ def fig_binding_addressability(vae: VAE_CNN, folder_path: str):
 
 @torch.no_grad()
 def fig_feature_swap(vae: VAE_CNN, folder_path: str):
+    from MLR_src.dataset_builder import Colorize_specific
+    import numpy as npy
     vae.eval()
     print("addressability figure")
     # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that as a cue
-    numimg = 2
+    numimg = 5
 
     bpsize = 25000        #size of the binding pool
     token_overlap =0.3
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
-    dataset = Dataset('mnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True}, train=False)
-    test_loader = dataset.get_loader(numimg)
+    dataset = Dataset('square',{'retina':False, 'colorize':False, 'rotate':False, 'scale':True}, train=False)
+    test_loader = cycle(dataset.get_loader(numimg))
     dataiter = iter(test_loader)
-    imgs = next(dataiter)[0].cuda()
-
-    # greyscale
-    weights = torch.tensor([0.2989, 0.5870, 0.1140], device=imgs.device).view(1, 3, 1, 1)
-    grey = (imgs * weights).sum(dim=1, keepdim=True)  # [B, 1, H, W]
-    grey_imgs = grey.repeat(1, 3, 1, 1)
-
-    #push the images through the encoder
-    activations = vae.activations(imgs.view(-1,3,imgsize, imgsize), False)
-    shape_act = activations['shape']
-    color_act = activations['color']
-
-    grey_activations = vae.activations(grey_imgs.view(-1,3,imgsize, imgsize), False)
-    grey_shape_act = grey_activations['shape']
     
-    BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1], 'color': [color_act.view(numimg,-1), 1]}
-    
-    #now store digits
-    BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_fact_novel)
-    
-    BPOut_cued = BPOut.clone()
-    # cue by greyscale shape activation of first image
-    tokenactivation = torch.zeros(numimg)
-    notLink_all = Tokenbindings[0]
-    shape_fw = Tokenbindings[1]
-    BP_reactivate = torch.mm(grey_shape_act[0].view(1, -1),shape_fw)
-    BP_reactivate = BP_reactivate  * BPOut
+    errors_1 = []
+    errors_2 = []
+    token_swap = 0
+    swap_count = 0
+    trial_count = 2000
+    for _ in range(trial_count):
+        crop_imgs = next(dataiter)[0].cuda()
 
-    for tokens in range(numimg):  # for each token
-        BP_reactivate_tok = BP_reactivate.clone()
-        BP_reactivate_tok[0,notLink_all[tokens, :]] = 0  # set the BPs to zero for this token retrieval
-        # for this demonstration we're assuming that all BP-> token weights are equal to one, so we can just sum the
-        # remaining binding pool neurons to get the token activation
-        tokenactivation[tokens] = BP_reactivate_tok.sum()
+        imgs = torch.zeros(numimg,3,64,64).cuda()
+        locations = []
+        colors = []
+        for i in range(numimg):
+            x = random.randint(0,64-imgsize)
+            y = random.randint(0,64-imgsize)
+            while (x,y) in locations:
+                x = random.randint(0,64-imgsize)
+                y = random.randint(0,64-imgsize)
+            locations += [(x,y),(x+1,y+1),(x-1,y-1),(x+1,y),(x,y+1),(x-1,y),(x,y-1),(x+2,y+2),(x-2,y-2),(x+2,y),(x,y+2),(x-2,y),(x,y-2),
+                          (x+3,y+3),(x-3,y-3),(x+3,y),(x,y+3),(x-3,y),(x,y-3),(x+4,y+4),(x-4,y-4),(x+4,y),(x,y+4),(x-4,y),(x,y-4)]
+            imgs[i,:,x:x+imgsize,y:y+imgsize] = crop_imgs[i]
+            color = random.randint(0,9)
+            colors.append(color)
+            colorizer = Colorize_specific(color)
+            frame = convert_tensor(colorizer(convert_image(imgs[i].cpu())))
+            imgs[i] = frame.cuda()
+        
+        excluded_colors = colors.copy()
+        crop_imgs_ex = next(dataiter)[0].cuda()
+        imgs_ex = torch.zeros(numimg,3,64,64).cuda()
+        for i in range(numimg):
+            x = random.randint(0,64-imgsize)
+            y = random.randint(0,64-imgsize)
+            imgs_ex[i,:,x:x+imgsize,y:y+imgsize] = crop_imgs_ex[i]
+            color = random.randint(0,9)
+            colorizer = Colorize_specific(color)
+            frame = convert_tensor(colorizer(convert_image(imgs_ex[i].cpu())))
+            imgs_ex[i] = frame.cuda()
 
-    max, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
-    BPOut_cued[0, notLink_all[maxtoken, :]] = 0
+        #push the images through the encoder
+        activations = vae.activations(imgs.view(-1,3,64, 64), True)
+        shape_act = activations['shape']
+        color_act = activations['color']
+        location_act = activations['location']
 
-    BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
-    BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+        cue_activations = vae.activations(imgs[0].view(-1,3,64, 64), True)
+        #cue_shape_act = cue_activations['shape']
+        cue_location_act = cue_activations['location']
+
+        excluded_activations = vae.activations(imgs_ex.view(-1,3,64, 64), True)
+        #excluded_shape_act = excluded_activations['shape']
+        excluded_color_act = excluded_activations['color']
+        
+        BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1], 'color': [color_act.view(numimg,-1), 1], 'location': [location_act.view(numimg,-1), 1]}
+        
+        #now store digits
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_fact_novel)
+        
+        BPOut_cued = BPOut.clone()
+        # cue by greyscale shape activation of first image
+        tokenactivation = torch.zeros(numimg)
+        notLink_all = Tokenbindings[0]
+        location_fw = Tokenbindings[3]
+        BP_reactivate = torch.mm(cue_location_act.view(1, -1),location_fw)
+        BP_reactivate = BP_reactivate  * BPOut
+
+        for tokens in range(numimg):  # for each token
+            BP_reactivate_tok = BP_reactivate.clone()
+            BP_reactivate_tok[0,notLink_all[tokens, :]] = 0
+            tokenactivation[tokens] = BP_reactivate_tok.sum()
+
+        max, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
+        BPOut_cued[0, notLink_all[maxtoken, :]] = 0
+
+        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+        BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+        
+        shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
+        shape_out_BP_cued, color_out_BP_cued = BP_act_out_cued['shape'], BP_act_out_cued['color']
+        
+        print(color_out_BP_cued.size())
+        errors = []
+        for i in range(numimg):
+            errors += [torch.norm(color_act[i]-color_out_BP_cued[0]).item()]
+        
+        if maxtoken != 0:
+            token_swap += 1
+
+        if errors[0] != min(errors):
+            swap_count += 1
+
+        excluded_errors = []
+        for i in range(numimg):
+            excluded_errors += [torch.norm(excluded_color_act[i]-color_out_BP_cued[0]).item()]
+        
+        errors_1 += [npy.mean(errors[1:])]
+        errors_2 += [npy.mean(excluded_errors)]
+    errors = npy.mean(npy.array(errors_1))
+    excluded_errors = npy.mean(npy.array(errors_2))
     
-    shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
-    shape_out_BP_cued, color_out_BP_cued = BP_act_out_cued['shape'], BP_act_out_cued['color']
-    BP_cropped_recon = vae.decoder_cropped(shape_out_BP, color_out_BP)
-    BP_cropped_recon_cued = vae.decoder_cropped(shape_out_BP_cued, color_out_BP_cued)
-    empty = torch.zeros(1,3,imgsize,imgsize).cuda()
-    grey_cue = torch.cat([grey_imgs[0].view(1,3,imgsize,imgsize), empty]).view(numimg, 3, imgsize, imgsize)
-    BP_cropped_recon_cued = torch.cat([BP_cropped_recon_cued[0].view(1,3,imgsize,imgsize), empty]).view(numimg, 3, imgsize, imgsize)
-    sample = imgs[0: numimg].view(numimg, 3, imgsize, imgsize)
+    print(locations)
+    print(f"Feature swap count: {token_swap} {swap_count} out of {trial_count}")
+    print("Feature swap color vector difference:", errors)
+    print("Feature swap color vector difference exlcuded:", excluded_errors)
+
+    #out_color = color_out_BP
+
 
     #save an image showing:  original images, reconstructions directly from L1,  from L1 BP, from L1 BP through bottleneck, from maps BP
-    save_image(torch.cat([sample, BP_cropped_recon, grey_cue, BP_cropped_recon_cued], 0), f'{folder_path}addressability.png',
-            nrow=numimg, normalize=False, pad_value=0.6)
+    #save_image(torch.cat([sample, BP_cropped_recon, grey_cue, BP_cropped_recon_cued], 0), f'{folder_path}addressability.png',
+     #       nrow=numimg, normalize=False, pad_value=0.6)
 
 @torch.no_grad()
 def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str):

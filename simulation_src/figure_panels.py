@@ -10,7 +10,7 @@ def interference(vae, folder_path):
         os.mkdir(folder_path)
 
     figures.fig_feature_swap(vae, folder_path)
-    figures.fig_efficient_rep(vae, folder_path)
+    #figures.fig_efficient_rep(vae, folder_path) WORKING
     pass
 
 @torch.no_grad()
