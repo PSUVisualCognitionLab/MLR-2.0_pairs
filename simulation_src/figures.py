@@ -6,7 +6,6 @@ DATASET_ROOT = '/home/bwyble/data/'
 import torch
 import sys
 import os
-import numpy as np
 from collections import defaultdict
 import torch.nn.functional as F
 from PIL import Image, ImageDraw, ImageFont
@@ -18,6 +17,8 @@ from scipy import stats
 import gc
 from PIL import Image
 from itertools import cycle
+from MLR_src.dataset_builder import Colorize_specific
+import numpy as npy
 
 #internal imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -630,44 +631,47 @@ def fig_binding_addressability(vae: VAE_CNN, folder_path: str):
     save_image(torch.cat([sample, BP_cropped_recon, grey_cue, BP_cropped_recon_cued], 0), f'{folder_path}addressability.png',
             nrow=numimg, normalize=False, pad_value=0.6)
 
-@torch.no_grad()
-def fig_feature_swap(vae: VAE_CNN, folder_path: str):
-    from MLR_src.dataset_builder import Colorize_specific
-    import numpy as npy
-    vae.eval()
-    print("addressability figure")
-    # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that as a cue
-    numimg = 5
+def sample_points(n, m, k=5, min_dist=5):
+    points = []
 
-    bpsize = 25000        #size of the binding pool
-    token_overlap =0.3
-    bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
+    def far_enough(p, q):
+        dist = ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5
+        return dist >= min_dist   # Euclidean distance
 
-    dataset = Dataset('square',{'retina':False, 'colorize':False, 'rotate':False, 'scale':True}, train=False)
+    attempts = 0
+    max_attempts = 10_000
+
+    while len(points) < k and attempts < max_attempts:
+        candidate = (random.randint(0, n-1), random.randint(0, m-1))
+        if all(far_enough(candidate, p) for p in points):
+            points.append(candidate)
+        attempts += 1
+
+    if len(points) < k:
+        raise RuntimeError("Failed to place points with required spacing.")
+
+    return points
+
+def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
     test_loader = cycle(dataset.get_loader(numimg))
     dataiter = iter(test_loader)
     
     errors_1 = []
     errors_2 = []
+    correct_token_err = []
     token_swap = 0
     swap_count = 0
-    trial_count = 2000
+    trial_count = 100
     for _ in range(trial_count):
         crop_imgs = next(dataiter)[0].cuda()
 
         imgs = torch.zeros(numimg,3,64,64).cuda()
-        locations = []
+        locations = sample_points(64 - imgsize, 64 - imgsize, k=numimg, min_dist=5)
         colors = []
         for i in range(numimg):
-            x = random.randint(0,64-imgsize)
-            y = random.randint(0,64-imgsize)
-            while (x,y) in locations:
-                x = random.randint(0,64-imgsize)
-                y = random.randint(0,64-imgsize)
-            locations += [(x,y),(x+1,y+1),(x-1,y-1),(x+1,y),(x,y+1),(x-1,y),(x,y-1),(x+2,y+2),(x-2,y-2),(x+2,y),(x,y+2),(x-2,y),(x,y-2),
-                          (x+3,y+3),(x-3,y-3),(x+3,y),(x,y+3),(x-3,y),(x,y-3),(x+4,y+4),(x-4,y-4),(x+4,y),(x,y+4),(x-4,y),(x,y-4)]
+            x, y = locations[i]
             imgs[i,:,x:x+imgsize,y:y+imgsize] = crop_imgs[i]
-            color = random.randint(0,9)
+            color = 1 #random.randint(0,9)
             colors.append(color)
             colorizer = Colorize_specific(color)
             frame = convert_tensor(colorizer(convert_image(imgs[i].cpu())))
@@ -677,8 +681,7 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str):
         crop_imgs_ex = next(dataiter)[0].cuda()
         imgs_ex = torch.zeros(numimg,3,64,64).cuda()
         for i in range(numimg):
-            x = random.randint(0,64-imgsize)
-            y = random.randint(0,64-imgsize)
+            x, y = locations[i]
             imgs_ex[i,:,x:x+imgsize,y:y+imgsize] = crop_imgs_ex[i]
             color = random.randint(0,9)
             colorizer = Colorize_specific(color)
@@ -699,7 +702,9 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str):
         #excluded_shape_act = excluded_activations['shape']
         excluded_color_act = excluded_activations['color']
         
-        BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1], 'color': [color_act.view(numimg,-1), 1], 'location': [location_act.view(numimg,-1), 1]}
+        BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1],
+                             'color': [color_act.view(numimg,-1), 1],
+                             'location': [location_act.view(numimg,-1), 1]}
         
         #now store digits
         BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_fact_novel)
@@ -731,10 +736,12 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str):
         for i in range(numimg):
             errors += [torch.norm(color_act[i]-color_out_BP_cued[0]).item()]
         
+        correct_token_err += [errors[0]]
+        
         if maxtoken != 0:
             token_swap += 1
 
-        if errors[0] != min(errors):
+        elif errors[0] != min(errors):
             swap_count += 1
 
         excluded_errors = []
@@ -743,6 +750,7 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str):
         
         errors_1 += [npy.mean(errors[1:])]
         errors_2 += [npy.mean(excluded_errors)]
+    correct_token_err_out = npy.mean(npy.array(correct_token_err))
     errors = npy.mean(npy.array(errors_1))
     excluded_errors = npy.mean(npy.array(errors_2))
     
@@ -750,13 +758,50 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str):
     print(f"Feature swap count: {token_swap} {swap_count} out of {trial_count}")
     print("Feature swap color vector difference:", errors)
     print("Feature swap color vector difference exlcuded:", excluded_errors)
+    return [token_swap / trial_count, swap_count / trial_count, correct_token_err_out, errors, excluded_errors]
 
-    #out_color = color_out_BP
+@torch.no_grad()
+def fig_feature_swap(vae: VAE_CNN, folder_path: str):
+    vae.eval()
+    print("addressability figure")
+    # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that as a cue
 
+    bpsize = 25000        #size of the binding pool
+    token_overlap =0.3
+    bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
-    #save an image showing:  original images, reconstructions directly from L1,  from L1 BP, from L1 BP through bottleneck, from maps BP
-    #save_image(torch.cat([sample, BP_cropped_recon, grey_cue, BP_cropped_recon_cued], 0), f'{folder_path}addressability.png',
-     #       nrow=numimg, normalize=False, pad_value=0.6)
+    dataset = Dataset('square',{'retina':False, 'colorize':False, 'rotate':False, 'scale':True}, train=False)
+
+    #iterate numimg 1-8, compute swap rate at each
+    token_swap_rates = []
+    color_swap_rates = []
+    errors_list = []
+    for numing in range(1,8):
+        swaps = feature_swap_trial(dataset, vae, numing, imgsize=imgsize)
+        token_swap_rates += [swaps[0]]
+        color_swap_rates += [swaps[1]]
+        errors_list += [[swaps[2], swaps[3]]]
+    
+    # % an incorrect token is selected
+    plt.plot(range(1,8), token_swap_rates)
+    plt.xlabel('Number of items')
+    plt.ylabel('Token swap rate')
+    plt.savefig(f'{folder_path}token_swap_rate.png')
+    
+    # % the correct token is selected but the incorrect square is chosen
+    plt.close()
+    plt.plot(range(1,8), color_swap_rates)
+    plt.xlabel('Number of items')
+    plt.ylabel('Feature swap rate')
+    plt.savefig(f'{folder_path}feature_swap_rate.png')
+
+    # error between selected color and true color
+    plt.close()
+    plt.plot(range(1,8), errors_list)
+    plt.xlabel('Number of items')
+    plt.ylabel('MSE latent color vector')
+    plt.legend(['Correct items', 'Other items'])
+    plt.savefig(f'{folder_path}feature_error.png')
 
 @torch.no_grad()
 def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str):

@@ -313,15 +313,6 @@ class UppercaseEMNIST(torch.utils.data.Dataset):
 
 class Dataset(data.Dataset):
     def __init__(self, dataset, transforms={}, train=True):
-        # initialize base dataset
-        if type(dataset) == str:
-            self.name = dataset
-            self.train = train
-            self.dataset = self._build_dataset(dataset, train)
-            #self.data_source = self
-
-        else:
-            raise ValueError('invalid dataset input type')
         # Use if the stimulus will put a stimulus into the retina
         if 'retina' in transforms: 
             self.retina = transforms['retina']
@@ -414,6 +405,16 @@ class Dataset(data.Dataset):
         else:
             self.pair_classes = None
 
+        # initialize base dataset
+        if type(dataset) == str:
+            self.name = dataset
+            self.train = train
+            self.dataset = self._build_dataset(dataset, train)
+            #self.data_source = self
+
+        else:
+            raise ValueError('invalid dataset input type')
+
         self.no_color_3dim = No_Color_3dim()
         self.totensor = ToTensor()
         self.target_dict = {'mnist':[0,9], 'emnist':[10,35], 'fashion_mnist':[36,45], 'cifar10':[0,9]} #[46,55]
@@ -455,12 +456,12 @@ class Dataset(data.Dataset):
         elif dataset == 'quickdraw_pairs':
             base_dataset = {}
             for c in self.pair_classes:
-                p = self.dir / f"{c}.npy"
-                if not p.exists():
-                    alt = self.dir / f"{c}.npy"
-                    p = alt if alt.exists() else p
-                if not p.exists():
-                    raise FileNotFoundError(p)
+                c = c[0]
+                p = f"{DATASET_ROOT}quickdraw/{c}.npy"
+                base_dataset[c] = _load_memmap(p)
+            for c in self.pair_classes:
+                c = c[1]
+                p = f"{DATASET_ROOT}quickdraw/{c}.npy"
                 base_dataset[c] = _load_memmap(p)
 
         elif os.path.exists(dataset):
@@ -470,6 +471,12 @@ class Dataset(data.Dataset):
             raise ValueError(f'{dataset} is not a valid base dataset')
 
         return base_dataset
+
+    def _rng(self, index: int):
+        info = torch.utils.data.get_worker_info()
+        wid = info.id if info else 0
+        s = (123 + 7919 * wid + 97 * index) & 0xFFFFFFFF
+        return np.random.default_rng(s)
 
     def __len__(self):
         if self.dataset is None:
@@ -497,7 +504,7 @@ class Dataset(data.Dataset):
             class_pair = random.choice(self.pair_classes)
             pair_idx = index % len(self.pair_classes)
             l_name, r_name = self.pair_classes[pair_idx]
-            la, ra = self._arrays[l_name], self._arrays[r_name]
+            la, ra = self.dataset[l_name], self.dataset[r_name]
 
             rng = self._rng(index)
             li = rng.integers(0, la.shape[0])
@@ -508,6 +515,9 @@ class Dataset(data.Dataset):
 
             l = torch.from_numpy(l).unsqueeze(0)  # (1,28,28) uint8
             r = torch.from_numpy(r).unsqueeze(0)  # (1,28,28) uint8
+            image = torch.cat([l, r], dim=2) # (1,56,28) uint8
+            image_np = image.squeeze(0).numpy()   # (56,28)
+            image = Image.fromarray(image_np, mode='L')
             target = pair_idx  # label
 
         elif type(self.dataset) != Image.Image:
