@@ -564,60 +564,76 @@ def fig_generative_noise(vae: VAE_CNN, shape_label, s_classes, color_label, c_cl
     save_image(recon_grid, f'{folder_path}sample.png', pad_value=0.6)
 
 @torch.no_grad()
-def fig_binding_addressability(vae: VAE_CNN, folder_path: str):
+def fig_binding_addressability(vae: VAE_CNN, color_classifier, folder_path: str):
     vae.eval()
     print("addressability figure")
     # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that as a cue
     numimg = 2
 
     bpsize = 25000        #size of the binding pool
-    token_overlap =0.3
+    token_overlap = 0.3
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
-    dataset = Dataset('mnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True}, train=False)
+    dataset = Dataset('mnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[2]}, train=False)
     test_loader = dataset.get_loader(numimg)
     dataiter = iter(test_loader)
-    imgs = next(dataiter)[0].cuda()
-
-    # greyscale
-    weights = torch.tensor([0.2989, 0.5870, 0.1140], device=imgs.device).view(1, 3, 1, 1)
-    grey = (imgs * weights).sum(dim=1, keepdim=True)  # [B, 1, H, W]
-    grey_imgs = grey.repeat(1, 3, 1, 1)
-
-    #push the images through the encoder
-    activations = vae.activations(imgs.view(-1,3,imgsize, imgsize), False)
-    shape_act = activations['shape']
-    color_act = activations['color']
-
-    grey_activations = vae.activations(grey_imgs.view(-1,3,imgsize, imgsize), False)
-    grey_shape_act = grey_activations['shape']
+    total_trials = 10
+    out_predictions = 0
+    token_predictions = 0
     
-    BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1], 'color': [color_act.view(numimg,-1), 1]}
-    
-    #now store digits
-    BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_fact_novel)
-    
-    BPOut_cued = BPOut.clone()
-    # cue by greyscale shape activation of first image
-    tokenactivation = torch.zeros(numimg)
-    notLink_all = Tokenbindings[0]
-    shape_fw = Tokenbindings[1]
-    BP_reactivate = torch.mm(grey_shape_act[0].view(1, -1),shape_fw)
-    BP_reactivate = BP_reactivate  * BPOut
+    for _ in range(total_trials):
+        imgs, targets = next(dataiter)
+        imgs = imgs.cuda()
 
-    for tokens in range(numimg):  # for each token
-        BP_reactivate_tok = BP_reactivate.clone()
-        BP_reactivate_tok[0,notLink_all[tokens, :]] = 0  # set the BPs to zero for this token retrieval
-        # for this demonstration we're assuming that all BP-> token weights are equal to one, so we can just sum the
-        # remaining binding pool neurons to get the token activation
-        tokenactivation[tokens] = BP_reactivate_tok.sum()
+        # greyscale
+        weights = torch.tensor([0.2989, 0.5870, 0.1140], device=imgs.device).view(1, 3, 1, 1)
+        grey = (imgs * weights).sum(dim=1, keepdim=True)  # [B, 1, H, W]
+        grey_imgs = grey.repeat(1, 3, 1, 1)
 
-    max, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
-    BPOut_cued[0, notLink_all[maxtoken, :]] = 0
+        #push the images through the encoder
+        activations = vae.activations(imgs.view(-1,3,imgsize, imgsize), False)
+        shape_act = activations['shape']
+        color_act = activations['color']
 
-    BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
-    BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
-    
+        grey_activations = vae.activations(grey_imgs.view(-1,3,imgsize, imgsize), False)
+        grey_shape_act = grey_activations['shape']
+        
+        BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1], 'color': [color_act.view(numimg,-1), 1]}
+        
+        #now store digits
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_fact_novel)
+        
+        BPOut_cued = BPOut.clone()
+        # cue by greyscale shape activation of first image
+        tokenactivation = torch.zeros(numimg)
+        notLink_all = Tokenbindings[0]
+        shape_fw = Tokenbindings[1]
+        BP_reactivate = torch.mm(grey_shape_act[0].view(1, -1),shape_fw)
+        BP_reactivate = BP_reactivate  * BPOut
+
+        for tokens in range(numimg):  # for each token
+            BP_reactivate_tok = BP_reactivate.clone()
+            BP_reactivate_tok[0,notLink_all[tokens, :]] = 0  # set the BPs to zero for this token retrieval
+            # for this demonstration we're assuming that all BP-> token weights are equal to one, so we can just sum the
+            # remaining binding pool neurons to get the token activation
+            tokenactivation[tokens] = BP_reactivate_tok.sum()
+
+        max, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
+        BPOut_cued[0, notLink_all[maxtoken, :]] = 0
+
+        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+        BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+        
+        #cued_prediction = shape_classifier.predict(BP_act_out_cued['shape'][0].view(1,-1).cpu())
+        #print(targets[0], cued_prediction)
+        cued_color_prediction = color_classifier.predict(BP_act_out_cued['color'][maxtoken].view(1,-1).cpu())
+        if cued_color_prediction == targets[0][0].item():
+            out_predictions += 1
+        if maxtoken == 0:
+            token_predictions += 1
+
+    print(f"Correct token: {token_predictions/total_trials} of {total_trials} trials")
+    print(f"Correct color: {out_predictions/total_trials} of {total_trials} trials")
     shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
     shape_out_BP_cued, color_out_BP_cued = BP_act_out_cued['shape'], BP_act_out_cued['color']
     BP_cropped_recon = vae.decoder_cropped(shape_out_BP, color_out_BP)

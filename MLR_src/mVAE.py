@@ -26,6 +26,7 @@ import random
 from torchvision import utils
 from torchvision.utils import save_image
 from tqdm import tqdm
+from tqdm import trange
 from torchvision import transforms as torch_transforms
 from training_constants import training_components, text_to_tensor
 
@@ -748,16 +749,9 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
     vae.train()
     count = 0
 
-    if('mnist-map' in dataloaders):
-        loader=tqdm(dataloaders['mnist-map'], total = max_iter)
-    elif ('quickdraw' in dataloaders):
-        loader=tqdm(dataloaders['quickdraw'], total = max_iter)
-    elif ('emnist-skip' in dataloaders):
-        loader=tqdm(dataloaders['emnist-skip'], total = max_iter)
-    else:
-        print('none of the expected dataloaders available for tqdm initialization ')    
+    loader = trange(max_iter, desc=f"epoch {epoch}") 
         
-    train_loss, retinal_loss_train, cropped_loss_train = 0, 0, 0 # loss metrics returned to Training.py
+    train_loss_dict = {}
     
     for i,j in enumerate(loader):  
         count += 1
@@ -800,7 +794,6 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         elif whichdecode_use == 'retinal': # retinal
             #loss = loss_function(recon_batch['recon'], data, recon_batch['crop'])
             loss = loss_function(recon_batch['recon'], data, None)
-            retinal_loss_train = loss.item()
             #demonstrate the quality of reconstructions of letters at specific locations and scales and colors on the retina
             if count >= 0.9*max_iter:
                 utils.save_image(
@@ -812,7 +805,6 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
 
         elif whichdecode_use == 'cropped': # cropped
             loss = loss_function_crop(recon_batch, data)
-            cropped_loss_train = loss.item()
 
         elif whichdecode_use == 'skip_cropped': # skip training
             loss = loss_function_crop(recon_batch, data)
@@ -834,16 +826,16 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
                     f"training_samples/{checkpoint_folder}/retinal_recon_obj_{epoch%2}.png",
                     nrow=25, normalize=False)
         
+        # track most recent loss metrics
+        train_loss_dict[whichdecode_use] = loss.item()
         #l1_norm = sum(p.abs().sum() for p in vae.parameters())
         #loss += l1_norm*0.0001
 
         #this is the magic line in pytorch that actually computes the gradients for the entire model
         loss.backward()
-
-        train_loss += loss.item()
         optimizer.step()
-        loader.set_description((f'epoch: {epoch}; mse: {loss.item():.5f};'))
-        seen_labels = None #update_seen_labels(batch_labels,seen_labels)
+        loader.set_description(f'epoch {epoch}; mse: {loss.item():.5f}')
+        seen_labels = update_seen_labels(labels,seen_labels)
 
         test_data, labels = next(dataloaders['emnist-map'])
         #progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))    #this is used to test progress_out without waiting for a whole epoch
@@ -872,19 +864,14 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         if i == max_iter +1:
             break
 
-    print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, train_loss))
+    print(f'====> Epoch: {epoch} Losses: {train_loss_dict}')
     
     if return_loss is True:
-        # get test losses for cropped and retinal
-        #test_data = next(test_iter)
-        try:
-            test_data, test_labels = next(dataloaders['mnist-map'])
+        test_data, test_labels = next(dataloaders['mnist-map'])
 
-            test_loss_dict = test_loss(vae, test_data, ['retinal', 'cropped', 'skip_cropped'])
-            returnval = [retinal_loss_train, test_loss_dict['retinal'], cropped_loss_train, test_loss_dict['cropped'], test_loss_dict['skip_cropped']]
-        except:
-            seen_labels = None
-            returnval = [0,0,0,0]
-
+        test_loss_dict = test_loss(vae, test_data, ['retinal', 'cropped', 'skip_cropped', 'shape', 'color'])
+        
+        returnval = {'train':train_loss_dict,
+                     'test':test_loss_dict}
 
         return returnval, seen_labels

@@ -32,12 +32,12 @@ def novel(vae, folder_path):
     pass
 
 @torch.no_grad()
-def addressability(vae, folder_path):
+def addressability(vae, color_classifier, folder_path):
     folder_path = folder_path + "addressability/"
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
 
-    figures.fig_binding_addressability(vae, folder_path)
+    figures.fig_binding_addressability(vae, color_classifier, folder_path)
 
 @torch.no_grad()
 def generative(vae, shape_label, s_classes, color_label, c_classes, folder_path):

@@ -3,6 +3,7 @@ import torch
 from MLR_src.mVAE import train
 import torch.optim as optim
 from itertools import cycle
+from training_constants import training_components
 
 def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use_wandb, start_epoch = 1, dimensions = []):
     if use_wandb is True:
@@ -20,20 +21,17 @@ def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use
             components_list = components_no_ret
         else:
             components_list = components
-        #print("Components: ", components_list)
 
-        loss_lst, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components_list, 600, checkpoint_folder)
+        loss_dicts, seen_labels = train(vae, optimizer, epoch, dataloaders, True, seen_labels, components_list, 600, checkpoint_folder)
 
         if use_wandb is True:   #this connects with weights and biases.. a website that tracks loss data over time.  Currently inoperable due to version conflict
-            wandb.log({
-            'epoch': epoch,
-            'retinal/training_loss': loss_lst[0],
-            'retinal/test_loss': loss_lst[1],
-            'cropped/training_loss': loss_lst[2],
-            'cropped/test_loss': loss_lst[3],
-            'cropped_skip/test_loss': loss_lst[4]
-            })
+            wandb_log = {'epoch': epoch}
 
+            for phase, losses in loss_dicts.items():
+                for name, value in losses.items():
+                    wandb_log[f"{name}/{phase}_loss"] = value
+
+            wandb.log(wandb_log)
             log_system_metrics()
 
         torch.cuda.empty_cache()
@@ -42,7 +40,8 @@ def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use
         checkpoint =  {
             'state_dict': vae.state_dict(),
             'labels': seen_labels,
-            'dimensions': dimensions
+            'dimensions': dimensions,
+            'training_components': training_components
                     }
         if epoch % 4 == 0:
             torch.save(checkpoint, f'checkpoints/{checkpoint_folder}/mVAE_checkpoint.pth')

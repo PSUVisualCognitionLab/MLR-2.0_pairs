@@ -404,6 +404,11 @@ class Dataset(data.Dataset):
             self.pair_classes = transforms['pair_classes']
         else:
             self.pair_classes = None
+        
+        if 'target_set' in transforms:
+            self.target_set = transforms['target_set']
+        else:
+            self.target_set = None
 
         # initialize base dataset
         if type(dataset) == str:
@@ -531,6 +536,11 @@ class Dataset(data.Dataset):
         else:
             image = self.dataset
             target = 1
+        
+        if self.target_set is not None:
+            if target not in self.target_set:
+                new_idx = random.randint(2,len(self))-2
+                return self.__getitem__(new_idx)
 
         col = None
         transform_list = []
