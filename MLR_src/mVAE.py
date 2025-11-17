@@ -695,6 +695,12 @@ def test_loss(vae, test_data, whichdecode = []):
         elif decoder == 'skip_cropped':
             loss = loss_function_crop(recon_batch, test_data[1])
         
+        elif decoder == 'shape':
+            loss = loss_function_shape(recon_batch, test_data[1], mu_shape, log_var_shape)
+        
+        elif decoder == 'color':
+            loss = loss_function_color(recon_batch, test_data[1], mu_color, log_var_color)
+        
         loss_dict[decoder] = loss.item()
 
     return loss_dict

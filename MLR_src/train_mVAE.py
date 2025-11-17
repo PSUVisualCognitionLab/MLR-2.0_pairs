@@ -17,7 +17,7 @@ def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use
     #components_no_skip = [s for s in components if "skip" not in s  ]
     components_no_ret = [s for s in components if "retina" not in s ]
     for epoch in range(start_epoch, epoch_count):
-        if epoch > 60:
+        if epoch > 7:
             components_list = components_no_ret
         else:
             components_list = components

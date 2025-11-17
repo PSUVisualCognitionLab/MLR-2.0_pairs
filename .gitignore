@@ -30,3 +30,4 @@ mnist_data_old
 .venv/
 .venv/bin/
 wandb/
+*.out

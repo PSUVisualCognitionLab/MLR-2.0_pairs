@@ -20,7 +20,7 @@ training_datasets = {'emnist-map': {'retina':True, 'colorize':True, 'rotate':Fal
 
 training_components = {'shape': [['emnist-map', 'mnist-map', 'square-map'], 2], # shape map, weighted 3 times in training etc
                        'color': [['emnist-map', 'mnist-map', 'square-map'], 3], # color map
-                       'object': [['quickdraw-map'], 3], # map for quickdraw
+                       'object': [['quickdraw-map'], 2], # map for quickdraw
                        'cropped': [['emnist-map', 'mnist-map'], 2], # shape and color recon
                        'cropped_object': [['quickdraw-map'], 2], # object and color recon
                        'skip_cropped': [['emnist-skip', 'mnist-skip', 'quickdraw-skip'], 2], # mnist/emnist skip connection

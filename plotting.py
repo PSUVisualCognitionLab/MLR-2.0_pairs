@@ -6,6 +6,7 @@ import os
 import matplotlib.pyplot as plt
 import argparse
 from joblib import load
+import seaborn as sns
 
 parser = argparse.ArgumentParser(description="Simulations using MLR-2.0")
 parser.add_argument("--c_folder", type=str, default='test', help="where to find the vae checkpoint/")
@@ -26,12 +27,15 @@ vae_color_labels = load_checkpoint_labels(f'{checkpoint_folder_path}/label_netwo
 mnist_clf_shapeS = load(f'{checkpoint_folder_path}/mss.joblib')
 emnist_clf_shapeS = load(f'{checkpoint_folder_path}/ess.joblib')
 clf_objectS = load(f'{checkpoint_folder_path}/ooo.joblib')
-clf_color = load(f'{checkpoint_folder_path}/occ.joblib')
+clf_color = load(f'{checkpoint_folder_path}/ecc.joblib')
 device = torch.device(f'cuda:{d}')
 torch.cuda.set_device(d)
 vae_color_labels.to(device)
 vae_shape_labels.to(device)
 print('checkpoint loaded')
+
+# set seaborn styles
+sns.set_theme(context="paper", style="white")
 
 simulation_folder_path = f'simulations/{run_name}/'
 if not os.path.exists('simulations/'):
@@ -40,14 +44,14 @@ if not os.path.exists('simulations/'):
 if not os.path.exists(simulation_folder_path):
     os.mkdir(simulation_folder_path)
 
-'''individuated(vae, simulation_folder_path)
+#individuated(vae, simulation_folder_path)
 interference(vae, simulation_folder_path)
-novel(vae, simulation_folder_path)
-addressability(vae, simulation_folder_path)
-generative(vae, vae_shape_labels, s_classes, vae_color_labels, c_classes, simulation_folder_path)
-synthesis(vae, vae_shape_labels, s_classes, clf_objectS, simulation_folder_path)
-compositional(vae, simulation_folder_path)'''
 #novel(vae, simulation_folder_path)
+#addressability(vae, clf_color, simulation_folder_path)
 #flexibility(vae, simulation_folder_path)
-#interference(vae, simulation_folder_path)
-addressability(vae, clf_color, simulation_folder_path)
+'''generative(vae, vae_shape_labels, s_classes, vae_color_labels, c_classes, simulation_folder_path)
+synthesis(vae, vae_shape_labels, s_classes, clf_objectS, simulation_folder_path)
+compositional(vae, simulation_folder_path)
+novel(vae, simulation_folder_path)
+
+interference(vae, simulation_folder_path)'''
