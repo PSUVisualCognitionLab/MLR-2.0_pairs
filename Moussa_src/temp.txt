@@ -1,0 +1,1 @@
+python -m Moussa_src.train   --data_root /home/bwyble/data/quickdraw_npy   --batch_size 256   --num_workers 0   --epochs 6   --items_per_pair_train 10000   --items_per_pair_eval 1000   --seed 123
