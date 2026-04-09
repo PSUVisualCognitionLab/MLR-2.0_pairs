@@ -241,7 +241,7 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
 
     
 # not working VVV
-def test_outputs(test_loader, n = 0.5):
+def test_outputs(test_loader, vae_shape_labels, vae_color_labels, vae, n = 0.5):
         vae_shape_labels.eval()
         vae_color_labels.eval()
         vae.eval()
@@ -267,7 +267,8 @@ def test_outputs(test_loader, n = 0.5):
         z_shape_label = vae_shape_labels(input_oneHot,n)
         z_color_label = vae_color_labels(color_oneHot)
 
-        z_shape, z_color, z_location = image_activations(image)
+        # Define or import the image_activations function
+        z_shape, z_color, z_location = vae.activations(image, False)  # Assuming activations is a method in vae
 
         with torch.no_grad():
                 recon_imgs = vae.decoder_cropped(z_shape, z_color,0,0)
@@ -302,7 +303,7 @@ def test_outputs(test_loader, n = 0.5):
                 range=(-1, 1),
             )
 
-def test_opposite_colors(test_loader, n = 0.5):
+def test_opposite_colors(test_loader, vae_shape_labels, vae_color_labels, vae, n = 0.5):
         vae_shape_labels.eval()
         vae_color_labels.eval()
         vae.eval()
@@ -328,8 +329,7 @@ def test_opposite_colors(test_loader, n = 0.5):
         z_shape_label = vae_shape_labels(input_oneHot,n)
         z_color_label = vae_color_labels(color_oneHot)
 
-        z_shape, z_color, z_location = image_activations(image)
-
+        z_shape, z_color, z_location = vae.activations(image, False)  # Assuming activations is a method in vae
         with torch.no_grad():
                 recon_imgs = vae.decoder_cropped(z_shape, z_color,0,0)
                 recon_imgs_shape = vae.decoder_shape(z_shape, z_color,0)
