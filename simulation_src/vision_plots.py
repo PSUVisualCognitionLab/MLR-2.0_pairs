@@ -101,80 +101,9 @@ def fig_retinal_mod(vae, folder_path):
         f'{folder_path}figure_retinal_mod.png', pad_value=0.6,
         nrow=bs, normalize=False)
 
-@torch.no_grad()
-def fig_retinal_mod(vae, folder_path):
-    vae.eval()
-    bs = 10
-    mnist_transforms = {'retina':True, 'colorize':True, 'scale':True}
-    mnist_loader= Dataset('mnist', mnist_transforms).get_loader(bs)
-    
-    dataiter_mnist = iter(mnist_loader)
-    data, labels = next(dataiter_mnist)
-    data = data[0].cuda()
 
-    activations = vae.activations(data, True)
-    
-    shape = activations['shape']
-    color = activations['color']
-    scale = activations['scale']
-    location = activations['location']
 
-    mod_location = torch.tensor([-0.4, -0.4] * bs).view(bs,2).cuda()
-    mod_scale = torch.tensor([0.8] * bs).view(bs,1).cuda()
 
-    theta = torch.cat([scale, location], 1)
-    theta_mod_loc = torch.cat([scale, mod_location], 1)
-    theta_mod_scale = torch.cat([mod_scale, location], 1)
-    theta_mod_both = torch.cat([mod_scale, mod_location], 1)
-
-    recon = vae.decoder_retinal(shape, color, theta)
-    recon_mod_loc = vae.decoder_retinal(shape, color, theta_mod_loc)
-    recon_mod_scale = vae.decoder_retinal(shape, color, theta_mod_scale)
-    recon_mod_both = vae.decoder_retinal(shape, color, theta_mod_both)
-
-    save_image(
-        torch.cat([data, recon, recon_mod_scale, recon_mod_loc, recon_mod_both], 0),
-        f'{folder_path}figure_retinal_mod.png', pad_value=0.6,
-        nrow=bs, normalize=False)
-
-@torch.no_grad()
-def fig_visual_synthesis(vae, shape_label, s_classes, shape_classifier, folder_path):
-    bs = 2
-    num1 = 3
-    num2 = 15
-    device = next(vae.parameters()).device
-    num_labels = F.one_hot(torch.tensor([num1, num2]).to(device), num_classes=s_classes).float().to(device) # shape
-    z_shape = shape_label(num_labels, 1)
-
-    recon_crop = vae.decoder_shape(z_shape)
-
-    location = torch.tensor([[0.0, 0.0], [0.05, -0.2]]).view(bs,2).to(device)
-    scale = torch.tensor([[2.5], [0.5]]).view(bs,1).to(device)
-    rotation = torch.tensor([[4.0], [0.0]]).view(bs,1).to(device)
-    theta = torch.cat([scale, location, rotation], 1)
-
-    recon = vae.decoder_retinal(z_shape, 0, theta, 'shape')
-
-    img1 = recon[0]
-    img2 = recon[1]
-    comb_img = torch.clamp(img1 + img2, 0, 0.5) * 1.5
-    comb_img = comb_img.view(1,3,64,64)
-
-    activations = vae.activations(comb_img, True, None, 'object')
-
-    pred_ss = shape_classifier.predict(activations['shape'].cpu())
-    out_pred = pred_ss[0].item() # predicted character
-    pred_prob = shape_classifier.predict_proba(activations['shape'].cpu())
-    out_prob = pred_prob[0][out_pred]
-
-    recon_shape = vae.decoder_object(activations['shape'], 0, 0)
-    save_image(comb_img, f'{folder_path}D_P_sim.png')
-    save_image(recon_shape, f'{folder_path}D_P_sim_recon.png')
-    save_image(recon_crop, f'{folder_path}D_P_crop_recon.png')
-    save_image(img1, f'{folder_path}D.png')
-    save_image(img2, f'{folder_path}P.png')
-
-    print(out_pred, out_prob)
 
 
 

@@ -9,15 +9,14 @@ parser.add_argument("--cuda_device", type=int, default=1, help="Which cuda devic
 parser.add_argument("--folder", type=str, default='test', help="Where to store checkpoints in checkpoints/")
 # VVV defines which components are trained
 parser.add_argument("--components", nargs='+', type=str, default=['shape', 'color', 'retinal', 'object', 'skip_cropped', 'cropped', 'retinal_object', 'cropped_object'], help="Which components to train")
-parser.add_argument("--z_dim", type=int, default=8, help="Size of the mVAE latent dimension")
+parser.add_argument("--z_dim", type=int, default=12, help="Size of the mVAE latent dimension")
 parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label_net', 'SVM'], help="Which models to train")
 parser.add_argument("--wandb", type=bool, default=False, help="Track training with wandb")
 parser.add_argument("--checkpoint_name", type=str, default='mVAE_checkpoint.pth', help="file name of checkpoint .pth")
 parser.add_argument("--start_ep", type=int, default=1, help="what epoch to resume training")
-parser.add_argument("--end_ep", type=int, default=300, help="what epoch to train to")
+parser.add_argument("--end_ep", type=int, default=134, help="what epoch to train to")
 #parser.add_argument("--batch_size", nargs='+', type=int, default=['mVAE', 'label_net', 'SVM'], help="Which components to train")
 args = parser.parse_args()
-
 
 
 # prerequisites
@@ -64,7 +63,7 @@ else:
     print('CUDA not available')
 
 bs=100   #batch size for training the main VAE
-SVM_bs = 25000  #batch size for training the spatial vision transformer
+SVM_bs = 20000  #batch size for training the svm classifiers
 obj_latent_flag = True   #this flag determines whether the VAE has an obj latent space
 
 
@@ -88,7 +87,6 @@ weighted_components = [] #specifies the order/frequency the model latents will b
 # model components are the latent spaces, like shape, color, etc   Each component also has a specific list of transforms
 
 for component in args.components:
-    print(component)
     weight = training_components[component][1]
     weighted_components += [component] * weight
     for dataset in training_components[component][0]:
@@ -103,8 +101,6 @@ for component in args.components:
         dataset_name = dataset.split('-')[0]
         dataset_transforms = training_datasets[dataset]   #load the transforms for this dataset
         SVM_dataloaders[dataset] = cycle(Dataset(dataset_name, dataset_transforms).get_loader(SVM_bs))
-
-print(SVM_dataloaders)
 
 
 vae.to(device)
@@ -122,7 +118,7 @@ if 'mVAE' in args.train_list:
 #train_labels
 if 'label_net' in args.train_list:
     print('Training: label networks')
-    train_labelnet(dataloaders, vae, 15, folder_name)
+    train_labelnet(dataloaders, vae, 15, args.z_dim, folder_name)
 
 #train_classifiers
 if 'SVM' in args.train_list:
