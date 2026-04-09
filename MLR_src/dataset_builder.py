@@ -270,7 +270,7 @@ class UppercaseEMNIST(torch.utils.data.Dataset):
             root=self.root,
             split='balanced',
             train=self.train,
-            download=True,
+            download=False,
             transform=torch_transforms.Compose([lambda img: torch_transforms.functional.rotate(img, -90),
             lambda img: torch_transforms.functional.hflip(img)])
         )

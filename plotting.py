@@ -1,8 +1,7 @@
 from simulation_src.plots_novel import cd_jiang_olson_chun_sim, cd_r_acc_vs_setsize, fig_loc_compare, load_checkpoint, cd_lines, cd_r_bp_cnn, obj_back_swap
-from simulation_src.memory_plots import fig_2bt, fig_2c #fig_2b(not used)
-from simulation_src.figures import fig_repeat_recon, fig_efficient_rep, fig_visual_synthesis
-from simulation_src.vision_plots import fig_2n, fig_retinal_mod
-from MLR_src.label_network import load_checkpoint_labels, s_classes #vae_color_labels (not used)
+from simulation_src.memory_plots import fig_2b, fig_2bt, fig_2c, fig_repeat_recon, fig_efficient_rep
+from simulation_src.vision_plots import fig_2n, fig_retinal_mod, fig_visual_synthesis
+from MLR_src.label_network import vae_shape_labels, vae_color_labels, load_checkpoint_shapelabels, s_classes
 import torch
 import os
 import matplotlib.pyplot as plt
@@ -21,12 +20,10 @@ checkpoint_folder_path = f'checkpoints/{folder_name}/' # the output folder for t
 d = 1
 vae = load_checkpoint(f'{checkpoint_folder_path}/mVAE_checkpoint.pth', d, True)
 vae.eval()
-load_checkpoint_labels(f'{checkpoint_folder_path}/label_network_checkpoint.pth', d)
-vae_shape_labels = load_checkpoint_labels(f'{checkpoint_folder_path}/label_network_checkpoint.pth', "shape", d) # added for visual synthesis
+load_checkpoint_shapelabels(f'{checkpoint_folder_path}/label_network_checkpoint.pth', d)
 clf_shapeS = load(f'{checkpoint_folder_path}/ess.joblib')
 device = torch.device(f'cuda:{d}')
 torch.cuda.set_device(d)
-vae_shape_labels = vae_shape_labels.to(device)  # added shape labels to device for visual synthesis
 print('checkpoint loaded')
 
 simulation_folder_path = f'simulations/{run_name}/'
