@@ -13,6 +13,9 @@ parser.add_argument("--c_folder", type=str, default='test', help="where to find 
 parser.add_argument("--run_name", type=str, default='test', help="where to store simulation outputs/")
 args = parser.parse_args()
 
+# example terminal command given a checkpoint named "square_train_1" and a desired output folder "test_all":
+# python plotting.py --c_folder square_train_1 --run_name test_all
+
 folder_name = args.c_folder
 run_name = args.run_name
 
