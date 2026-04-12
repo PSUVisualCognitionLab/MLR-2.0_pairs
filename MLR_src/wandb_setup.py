@@ -2,12 +2,12 @@ import wandb
 from datetime import datetime
 import subprocess
 
-def initialize_wandb(project_name, config):
+def initialize_wandb(project_name, config, checkpoint_folder):
     """Initialize a WandB run with custom monitoring"""
     wandb.init(
         project=project_name,
         config=config,
-        name=f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        name=f"run_{checkpoint_folder}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
 
 def get_gpu_metrics():

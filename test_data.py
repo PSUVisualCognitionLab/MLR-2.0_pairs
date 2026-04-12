@@ -1,14 +1,22 @@
 # prerequisites
-from dataset_builder import Dataset
+from MLR_src.dataset_builder import Dataset
+from itertools import cycle
 #from dataset_builder_old import dataset_builder
 from torchvision import utils
 import time
 import torch
-from mVAE import place_crop
+from training_constants import training_related_pairs
+from MLR_src.mVAE import place_crop
 
-transform = {'retina':True, 'colorize':True, 'scale':True}#, 'location_targets':{'left':[0,1,2,3], 'right':[4,5,6,7]}, 'color_targets':{4:[4,3,7], 1:[8,1], 2:[5,6]}}
-train_data = Dataset('mnist', transform)
-data_ranges = train_data.all_possible_labels()
+training_related_pairs = [('airplane', 'bird'), ('tree', 'axe')]
+transform = {'retina':True, 'colorize':True, 'scale':True, 'pair_classes': training_related_pairs}#, 'location_targets':{'left':[0,1,2,3], 'right':[4,5,6,7]}, 'color_targets':{4:[4,3,7], 1:[8,1], 2:[5,6]}}
+train_data = Dataset('quickdraw_pairs', transform)
+train_loader = cycle(train_data.get_loader(2))
+data,labels = next(iter(train_loader))
+out = data[0]
+utils.save_image(out,'dataset_test.png')
+
+'''data_ranges = train_data.all_possible_labels()
 #print(data_ranges)
 train_loader = train_data.get_loader(200)
 data,labels = next(iter(train_loader))
@@ -40,4 +48,4 @@ print(f'{int(s)}/{i+1}')
 
 labels1 = [(1,2,4),(1,2,4),(3,3,2)]
 labels2 = [(1,2,2),(3,3,2)]
-print(set(labels1) | set(labels2)|set({}))
+print(set(labels1) | set(labels2)|set({}))'''

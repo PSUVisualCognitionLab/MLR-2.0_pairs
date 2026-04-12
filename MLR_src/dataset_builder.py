@@ -26,6 +26,17 @@ colorvals = [
     [1-colorrange,1-colorrange,1-colorrange]
 ]
 
+def _load_memmap(path: str) -> np.memmap:
+    arr = np.load(path, mmap_mode="r")
+    if arr.ndim == 2 and arr.shape[1] == 784:
+        return arr
+    if arr.ndim == 3 and arr.shape[1:] == (28, 28):
+        return arr
+    raise ValueError(f"Unexpected shape in {path}: {arr.shape}")
+
+def _ensure_28x28_uint8(a: np.ndarray) -> np.ndarray:
+    return a.reshape(28, 28) if a.ndim == 1 else a
+
 class RandomRotate90:
     """
     Rotate a PIL image or torch Tensor by k * 90°   with k ∈ {0,1,2,3}.
@@ -302,15 +313,6 @@ class UppercaseEMNIST(torch.utils.data.Dataset):
 
 class Dataset(data.Dataset):
     def __init__(self, dataset, transforms={}, train=True):
-        # initialize base dataset
-        if type(dataset) == str:
-            self.name = dataset
-            self.train = train
-            self.dataset = self._build_dataset(dataset, train)
-            #self.data_source = self
-
-        else:
-            raise ValueError('invalid dataset input type')
         # Use if the stimulus will put a stimulus into the retina
         if 'retina' in transforms: 
             self.retina = transforms['retina']
@@ -396,6 +398,27 @@ class Dataset(data.Dataset):
                 self.retina = False
         else:
             self.skip = False
+        
+        # initialize pair classes for quickdraw_pairs
+        if 'pair_classes' in transforms:
+            self.pair_classes = transforms['pair_classes']
+        else:
+            self.pair_classes = None
+        
+        if 'target_set' in transforms:
+            self.target_set = transforms['target_set']
+        else:
+            self.target_set = None
+
+        # initialize base dataset
+        if type(dataset) == str:
+            self.name = dataset
+            self.train = train
+            self.dataset = self._build_dataset(dataset, train)
+            #self.data_source = self
+
+        else:
+            raise ValueError('invalid dataset input type')
 
         self.no_color_3dim = No_Color_3dim()
         self.totensor = ToTensor()
@@ -436,7 +459,15 @@ class Dataset(data.Dataset):
             base_dataset = np.load(f'{DATASET_ROOT}quickdraw_npy/full_numpy_bitmap_all_objs.npy')
         
         elif dataset == 'quickdraw_pairs':
-            base_dataset = np.load(f"{DATASET_ROOT}quickdraw_pairs.npy")
+            base_dataset = {}
+            for c in self.pair_classes:
+                c = c[0]
+                p = f"{DATASET_ROOT}quickdraw/{c}.npy"
+                base_dataset[c] = _load_memmap(p)
+            for c in self.pair_classes:
+                c = c[1]
+                p = f"{DATASET_ROOT}quickdraw/{c}.npy"
+                base_dataset[c] = _load_memmap(p)
 
         elif os.path.exists(dataset):
             base_dataset = Image.open(rf'{dataset}')
@@ -445,6 +476,12 @@ class Dataset(data.Dataset):
             raise ValueError(f'{dataset} is not a valid base dataset')
 
         return base_dataset
+
+    def _rng(self, index: int):
+        info = torch.utils.data.get_worker_info()
+        wid = info.id if info else 0
+        s = (123 + 7919 * wid + 97 * index) & 0xFFFFFFFF
+        return np.random.default_rng(s)
 
     def __len__(self):
         if self.dataset is None:
@@ -467,7 +504,26 @@ class Dataset(data.Dataset):
         elif self.name == 'quickdraw':
             image = Image.fromarray(self.dataset[index, :-1].reshape(28, 28))  # image
             target = int(self.dataset[index, -1])  # label
-            #print(target)
+        
+        elif self.name == 'quickdraw_pairs':
+            class_pair = random.choice(self.pair_classes)
+            pair_idx = index % len(self.pair_classes)
+            l_name, r_name = self.pair_classes[pair_idx]
+            la, ra = self.dataset[l_name], self.dataset[r_name]
+
+            rng = self._rng(index)
+            li = rng.integers(0, la.shape[0])
+            ri = rng.integers(0, ra.shape[0])
+
+            l = _ensure_28x28_uint8(la[li])
+            r = _ensure_28x28_uint8(ra[ri])
+
+            l = torch.from_numpy(l).unsqueeze(0)  # (1,28,28) uint8
+            r = torch.from_numpy(r).unsqueeze(0)  # (1,28,28) uint8
+            image = torch.cat([l, r], dim=2) # (1,56,28) uint8
+            image_np = image.squeeze(0).numpy()   # (56,28)
+            image = Image.fromarray(image_np, mode='L')
+            target = pair_idx  # label
 
         elif type(self.dataset) != Image.Image:
             image, target = self.dataset[index]
@@ -480,6 +536,11 @@ class Dataset(data.Dataset):
         else:
             image = self.dataset
             target = 1
+        
+        if self.target_set is not None:
+            if target not in self.target_set:
+                new_idx = random.randint(2,len(self))-2
+                return self.__getitem__(new_idx)
 
         col = None
         transform_list = []
