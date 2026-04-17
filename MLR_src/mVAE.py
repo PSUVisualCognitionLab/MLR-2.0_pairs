@@ -758,7 +758,6 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
     loader = trange(max_iter, desc=f"epoch {epoch}") 
         
     train_loss_dict = {}
-    
     for i,j in enumerate(loader):  
         count += 1
         
@@ -776,7 +775,6 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             # if the dataloader has retinal=True, take the cropped img for cropped components
             #print(f'data: {sample_dataloader_name} decode: {whichdecode_use}')
             
-
             if type(sample) == list:
                 if whichdecode_use in ['cropped', 'shape', 'color', 'object', 'cropped_object']:
                     sample = sample[1]   # cropped version
@@ -785,8 +783,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             samples += [sample]
 
         data = torch.cat(samples, 0)
-        #print(data.size())
-        #print(whichdecode_use)
+
         keepgrad = component_to_grad(whichdecode_use)        
         
         recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use, keepgrad)
@@ -801,12 +798,12 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             #loss = loss_function(recon_batch['recon'], data, recon_batch['crop'])
             loss = loss_function(recon_batch['recon'], data, None)
             #demonstrate the quality of reconstructions of letters at specific locations and scales and colors on the retina
-            if count >= 0.9*max_iter:
+            if count >= 0.9*max_iter and epoch % 20 == 1:
                 utils.save_image(
                     torch.cat([data.view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
                                ], 0),
-                    f"training_samples/{checkpoint_folder}/retinal_recon_ColorLetter{epoch%2}.png",
+                    f"training_samples/{checkpoint_folder}/retinal_recon_ColorLetter{epoch}.png",
                     nrow=25, normalize=False)
 
         elif whichdecode_use == 'cropped': # cropped
@@ -824,12 +821,12 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         elif whichdecode_use == 'retinal_object': # retinal quickdraw object training
             loss = loss_function(recon_batch['recon'], data, None)
             #demonstrate the quality of reconstructions of objects at specific locations and scales and colors on the retina
-            if count >= 0.9*max_iter:
+            if count >= 0.9*max_iter and epoch % 20 == 1:
                 utils.save_image(
                     torch.cat([data.view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
                                ], 0),
-                    f"training_samples/{checkpoint_folder}/retinal_recon_obj_{epoch%2}.png",
+                    f"training_samples/{checkpoint_folder}/retinal_recon_obj_{epoch}.png",
                     nrow=25, normalize=False)
         
         # track most recent loss metrics
@@ -846,18 +843,18 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         test_data, labels = next(dataloaders['emnist-map'])
         #progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))    #this is used to test progress_out without waiting for a whole epoch
 
-        if count % int(0.9*max_iter) == 0:
+        if count % int(0.9*max_iter) == 0 and epoch % 20 == 1:
             #test_data, j = next(test_iter)
             try:
             
                 test_data, labels = next(dataloaders['emnist-map'])
-                progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch%2))
+                progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))
             except:
                 print('Progress_out failed to create a training sample image for emnist')
                 pass
             try:
                 test_data, labels = next(dataloaders['quickdraw'])
-                progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch%2))
+                progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch))
             except:
                 print('Progress_out failed to create a training sample image for quickdraw')
                 pass

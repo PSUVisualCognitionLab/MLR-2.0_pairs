@@ -19,7 +19,7 @@ bs = 100
 s_classes = 36
 c_classes = 10
 
-def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder):
+def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder, trained_components):
     if not os.path.exists('training_samples/'):
         os.mkdir('training_samples/')
     
@@ -38,9 +38,14 @@ def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder):
     optimizer_colorlabels= optim.Adam(vae_color_labels.parameters())
     optimizer_objectlabels= optim.Adam(vae_object_labels.parameters())
 
-    label_nets = {'shape':[vae_shape_labels, optimizer_shapelabels],
-                  'object': [vae_object_labels, optimizer_objectlabels],
-                  'color': [vae_color_labels, optimizer_colorlabels]}
+    
+    label_nets = {}
+    if 'shape' in trained_components:
+        label_nets['shape'] = [vae_shape_labels, optimizer_shapelabels]
+    if 'object' in trained_components:
+        label_nets['object'] = [vae_object_labels, optimizer_objectlabels]
+    if 'color' in trained_components:
+        label_nets['color'] = [vae_color_labels, optimizer_colorlabels]
 
     for whichcomponent in label_nets:
         label_net, optimizer = label_nets[whichcomponent]
@@ -153,7 +158,7 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
     dataiter = train_loader
 
     max_iter = 100
-    for i , j in enumerate(train_loader):
+    for i ,j  in enumerate(train_loader):  # j is not used but it needs to be here
         optimizer.zero_grad()
 
         image, labels = next(dataiter)
@@ -190,7 +195,7 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
 
         optimizer.step()
 
-        if i % 1000 == 0:   #every 1000 samples grab a random sample
+        if i % max_iter == 0 and i > 0:   #every 1000 samples grab a random sample
             label_net.eval()
             vae.eval()
 
@@ -230,7 +235,6 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
             new_tensor[:, header_height:, :] = output_img2
             text_tensor = text_to_tensor("Image / recon from encoder / recon from label ",header_height,width)
             new_tensor[:, :header_height, :] = text_tensor
-
             utils.save_image(new_tensor,
                 f'{folder_path}{whichcomponent}{str(epoch).zfill(5)}_{str(i).zfill(5)}.png',
                 nrow = 1,
