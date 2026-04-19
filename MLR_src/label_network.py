@@ -184,9 +184,18 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
         z_label = label_net(input_one_hot,n)  #run a label through the model to generate a latent representation
         
 
-        activations = vae.activations(image, False)  #load activity for each of the latent spaces based on the image
-        z_actual = activations[whichcomponent]   #extract the activity for that latent representation
+#        activations = vae.activations(image, False)  #load activity for each of the latent spaces based on the image
+#        z_actual = activations[whichcomponent]   #extract the activity for that latent representation
 
+        # don't use the randomized output for training, instead just use the mu
+        mu_shape, _, mu_color, _, hskip = vae.encoder(image)
+        mu_object, _ = vae.encoder_object(image)
+        if whichcomponent == 'shape':
+            z_actual = mu_shape
+        elif whichcomponent == 'color':
+            z_actual = mu_color
+        elif whichcomponent == 'object':
+            z_actual = mu_object
         # train shape label net
         
         loss_of_labels = loss_label(z_label, z_actual)   #compute the error
@@ -197,7 +206,7 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
 
         if i % max_iter == 0 and i > 0:   #every 1000 samples grab a random sample
             label_net.eval()
-            vae.eval()
+            #vae.eval()
 
             if whichcomponent == 'color':   #grab the appropriate decoder from the VAE
                 feature_decoder = vae.color_decode_wrapper
@@ -207,8 +216,15 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
                 feature_decoder = vae.decoder_object
 
             with torch.no_grad():   #Use them to reconstruct an object
-                feature_recon = feature_decoder(z_actual)         # recon from an actual object
-                feature_recon_label = feature_decoder(z_label)    #recon from a label 
+                #feature_recon = feature_decoder(z_actual)         # recon from an actual object
+                if whichcomponent == 'color':
+                    feature_recon, _, _, _, _ = vae(image, 'color', ['color'])
+                elif whichcomponent == 'shape':
+                    feature_recon, _, _, _, _= vae(image, 'shape', ['shape'])
+                else:
+                    feature_recon, _, _, _, _= vae(image, 'object', ['object'])
+                feature_recon_label = feature_decoder(z_label)
+
 
                 sample_size = 20
                 orig_imgs = image[:sample_size]

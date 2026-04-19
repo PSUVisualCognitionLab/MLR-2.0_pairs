@@ -633,23 +633,20 @@ def loss_function_scale(recon_x, x, mu, log_var):
 def progress_out(vae, data, checkpoint_folder,name):
     device = next(vae.parameters()).device 
     sample_size = 25
-    vae.eval()
+    #vae.eval()
+    vae.dropout.p = 0
     sample = data[:sample_size].to(device)   #the actual image
-    if('quickdraw' in name):
-        activations = vae.activations(sample, False,None,'object')   #get the activations from this image 
-        skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
-    
-        shape = vae.decoder_object(activations['shape'], 0, 0)                   # The shape reconstruction alone
-        recon = vae.decoder_cropped_object(activations['shape'],activations['color'])   #combine the shape and color maps to reconstructions
-    
-    else:
-        activations = vae.activations(sample, False)   #get the activations from this image 
-        skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
-    
-        shape = vae.decoder_shape(activations['shape'], 0, 0)                   # The shape reconstruction alone
-        recon = vae.decoder_cropped(activations['shape'],activations['color'])   #combine the shape and color maps to reconstructions
-    
-    color = vae.decoder_color(0, activations['color'], 0)                   #the color alone
+    with torch.no_grad():
+        if 'quickdraw' in name:
+            recon, _, _, _, _ = vae(sample, 'cropped_object', ['object', 'color'])
+            shape, _, _, _, _ = vae(sample, 'object', ['object'])
+        else:
+            recon, _, _, _, _ = vae(sample, 'cropped', ['shape', 'color'])
+            shape, _, _, _, _ = vae(sample, 'shape', ['shape'])
+        color, _, _, _, _ = vae(sample, 'color', ['color'])
+        skip, _, _, _, _ = vae(sample, 'skip_cropped', ['skip'])
+
+    vae.dropout.p = 0.1 
     vae.train()
      
     output_img = torch.cat([sample.view(sample_size, 3, imgsize, imgsize)[:25], recon.view(sample_size, 3, imgsize, imgsize)[:25], skip.view(sample_size, 3, imgsize, imgsize)[:25],
@@ -674,8 +671,6 @@ def progress_out(vae, data, checkpoint_folder,name):
 
     utils.save_image(new_tensor,f'training_samples/{checkpoint_folder}/cropped_sample_{name}.png',
             nrow=1, normalize=False)
-   
-
 
 
 
@@ -798,7 +793,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             #loss = loss_function(recon_batch['recon'], data, recon_batch['crop'])
             loss = loss_function(recon_batch['recon'], data, None)
             #demonstrate the quality of reconstructions of letters at specific locations and scales and colors on the retina
-            if count >= 0.9*max_iter and epoch % 20 == 1:
+            if count >= 0.9*max_iter:
                 utils.save_image(
                     torch.cat([data.view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
@@ -808,7 +803,13 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
 
         elif whichdecode_use == 'cropped': # cropped
             loss = loss_function_crop(recon_batch, data)
-
+            if count >= 0.9*max_iter and epoch % 5 == 1:
+                utils.save_image(
+                    torch.cat([data.view(-1, 3, 28, 28)[:25].cpu(),
+                            recon_batch.view(-1, 3, 28, 28)[:25].cpu()], 0),
+                    f"training_samples/{checkpoint_folder}/cropped_recon_{epoch}.png",
+                    nrow=25, normalize=False)
+                
         elif whichdecode_use == 'skip_cropped': # skip training
             loss = loss_function_crop(recon_batch, data)
 
@@ -817,11 +818,17 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         
         elif whichdecode_use == 'cropped_object': # cropped quickdraw object training
             loss = loss_function_crop(recon_batch, data)
-        
+            if count >= 0.9*max_iter and epoch % 5 == 1:
+                utils.save_image(
+                    torch.cat([data.view(-1, 3, 28, 28)[:25].cpu(),
+                            recon_batch.view(-1, 3, 28, 28)[:25].cpu()], 0),
+                    f"training_samples/{checkpoint_folder}/cropped_object_recon_{epoch}.png",
+                    nrow=25, normalize=False)
+                
         elif whichdecode_use == 'retinal_object': # retinal quickdraw object training
             loss = loss_function(recon_batch['recon'], data, None)
             #demonstrate the quality of reconstructions of objects at specific locations and scales and colors on the retina
-            if count >= 0.9*max_iter and epoch % 20 == 1:
+            if count >= 0.9*max_iter:
                 utils.save_image(
                     torch.cat([data.view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
@@ -843,22 +850,13 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         test_data, labels = next(dataloaders['emnist-map'])
         #progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))    #this is used to test progress_out without waiting for a whole epoch
 
-        if count % int(0.9*max_iter) == 0 and epoch % 20 == 1:
+        if count % int(0.9*max_iter) == 0 and epoch % 5 == 1:
             #test_data, j = next(test_iter)
-            try:
-            
-                test_data, labels = next(dataloaders['emnist-map'])
-                progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))
-            except:
-                print('Progress_out failed to create a training sample image for emnist')
-                pass
-            try:
-                test_data, labels = next(dataloaders['quickdraw'])
-                progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch))
-            except:
-                print('Progress_out failed to create a training sample image for quickdraw')
-                pass
-
+            test_data, labels = next(dataloaders['emnist-map'])
+            progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))
+            test_data, labels = next(dataloaders['quickdraw-map'])
+            progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch))
+           
 
         #elif count % 500 == 0: not for RED GREEN
          #   data = data_noSkip[0][1] + data_skip[0]
