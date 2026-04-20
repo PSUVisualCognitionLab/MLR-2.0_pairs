@@ -6,7 +6,7 @@ testing_related_pairs = [('airplane', 'bird')]
 testing_unrelated_pairs = [('airplane', 'axe')]
 
 # dataset names must be in format <dataset name>-<component type>, unless there is only one component trained by that dataset
-training_datasets = {'emnist-map': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':list(range(10, 36))},
+training_datasets = {'emnist-map': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True},
                      'emnist-skip': {'retina':False, 'colorize':True, 'rotate':True, 'scale':True, 'skip': True},
                      'mnist-map': {'retina':True, 'colorize':True, 'rotate':False, 'scale':True},
                      'mnist-skip': {'retina':False, 'colorize':True, 'rotate':True, 'scale':True, 'skip': True},

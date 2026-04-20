@@ -58,8 +58,6 @@ def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder, trai
             'state_dict_shape_labels': vae_shape_labels.state_dict(),
             'state_dict_color_labels': vae_color_labels.state_dict(),
             'state_dict_object_labels': vae_object_labels.state_dict(),
-
-
             'optimizer_shape' : optimizer_shapelabels.state_dict(),
             'optimizer_color': optimizer_colorlabels.state_dict(),
             'optimizer_object': optimizer_objectlabels.state_dict(),
@@ -184,10 +182,11 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
         z_label = label_net(input_one_hot,n)  #run a label through the model to generate a latent representation
         
 
-#        activations = vae.activations(image, False)  #load activity for each of the latent spaces based on the image
-#        z_actual = activations[whichcomponent]   #extract the activity for that latent representation
-
+        activations = vae.activations(image, False)  #load activity for each of the latent spaces based on the image
+        z_actual = activations[whichcomponent]   #extract the activity for that latent representation
+        '''
         # don't use the randomized output for training, instead just use the mu
+        
         mu_shape, _, mu_color, _, hskip = vae.encoder(image)
         mu_object, _ = vae.encoder_object(image)
         if whichcomponent == 'shape':
@@ -196,6 +195,8 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
             z_actual = mu_color
         elif whichcomponent == 'object':
             z_actual = mu_object
+        '''
+
         # train shape label net
         
         loss_of_labels = loss_label(z_label, z_actual)   #compute the error
