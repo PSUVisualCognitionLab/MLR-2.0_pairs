@@ -284,8 +284,9 @@ class VAE_CNN(nn.Module):
         else:
             z_scale = 0
             z_location = 0
-
-        out_dict = {'shape':z_shape, 'color':z_color, 'object':z_object, 'scale':z_scale, 'location':z_location, 'skip':hskip}
+        
+        loss_params = [mu_shape, log_var_shape, mu_color, log_var_color, mu_object, log_var_object]
+        out_dict = {'shape':z_shape, 'color':z_color, 'object':z_object, 'scale':z_scale, 'location':z_location, 'skip':hskip, 'loss_params':loss_params}
 
         return out_dict
 
@@ -487,7 +488,8 @@ class VAE_CNN(nn.Module):
         return torch.sigmoid(h)
 
     def forward(self, x, whichdecode='noskip', keepgrad=[]):
-        if 'retinal' in whichdecode:    #passing in a cropped+ location as input
+        # replace this logic with activations() call
+        '''if 'retinal' in whichdecode:    #passing in a cropped+ location as input
             if type(x) == list or type(x) == tuple:
                 x = x[0].cuda()
             else:
@@ -503,17 +505,28 @@ class VAE_CNN(nn.Module):
                 x = x.cuda()
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
             mu_object, log_var_object = self.encoder_object(x)
+        '''
+        activations = self.activations(x, retinal = ('retinal' in whichdecode), hskip = None)
+        mu_shape, log_var_shape, mu_color, log_var_color, mu_object, log_var_object = activations['loss_params']
+        
 
         # the maps that are used in the training process.. the others are detached to zero out those gradients
         if ('shape' in keepgrad):
-            z_shape = self.sampling(mu_shape, log_var_shape)
+            z_shape = activations['shape']
         else:
-            z_shape = self.sampling(mu_shape, log_var_shape).detach()
+            z_shape = activations['shape'].detach()
 
         if ('color' in keepgrad):
-            z_color = self.sampling(mu_color, log_var_color)
+            z_color = activations['color']
         else:
-            z_color = self.sampling(mu_color, log_var_color).detach()
+            z_color = activations['color'].detach()
+
+        # add z_object handling here I'm not fully sure if this is the best way to do it
+        # check how keepgrad is put together first
+        if ('object' in keepgrad):
+            z_object = activations['object']
+        else:
+            z_object = activations['object'].detach()
 
         if ('skip' in keepgrad):
             hskip = hskip
@@ -534,13 +547,13 @@ class VAE_CNN(nn.Module):
         elif (whichdecode == 'shape'):
             output = self.decoder_shape(z_shape,0, 0)
         elif (whichdecode == 'object'):
-            output = self.decoder_object(z_shape, 0, 0)
+            output = self.decoder_object(z_object, 0, 0)
         elif (whichdecode == 'cropped_object'):
-            output = self.decoder_cropped_object(z_shape, z_color, 0)
+            output = self.decoder_cropped_object(z_object, z_color, 0)
         elif (whichdecode == 'retinal_object'):
-            output = self.decoder_retinal_object(z_shape,z_color, theta)
+            output = self.decoder_retinal_object(z_object, z_color, theta)
         
-        return output, mu_color, log_var_color, mu_shape, log_var_shape
+        return output, mu_color, log_var_color, mu_shape, log_var_shape, mu_object, log_var_object
 
 # function to build a model instance
 def vae_builder(dimensions = [retina_size * retina_size * 3, 256, 128, 8], draw_dim = False):
