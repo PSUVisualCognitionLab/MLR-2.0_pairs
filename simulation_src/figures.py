@@ -777,7 +777,7 @@ def fig_generative_noise(vae: VAE_CNN, shape_label, s_classes, color_label, c_cl
         
         # load plotting data
         loaded_data = joblib.load(pkl_path)
-        "recon_grid" = loaded_data["recon_grid"]
+        recon_grid = loaded_data["recon_grid"]
     
     save_image(recon_grid, f'{folder_path}sample.png', pad_value=0.6)
 

@@ -456,7 +456,7 @@ class Dataset(data.Dataset):
             base_dataset = None
         
         elif dataset == 'quickdraw':
-            base_dataset = np.load(f'{DATASET_ROOT}quickdraw_npy/full_numpy_bitmap_all_objs.npy')
+            base_dataset = np.load(f'{DATASET_ROOT}quickdraw_npy/filtered_dataset_1.npy') #full_numpy_bitmap_all_objs
         
         elif dataset == 'quickdraw_pairs':
             base_dataset = {}
