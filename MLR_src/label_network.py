@@ -149,6 +149,7 @@ def loss_label(label_act,image_act):
 
 def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer, folder_path):    
     device = next(vae.parameters()).device
+    vae.eval()
     train_loss = 0
 
     label_net.train().to(device)
@@ -199,15 +200,25 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
 
         # train shape label net
         
-        loss_of_labels = loss_label(z_label, z_actual)   #compute the error
+        #loss_of_labels = loss_label(z_label, z_actual)   #compute the error
+
+        if whichcomponent == 'object':
+            recon_from_label = vae.decoder_object(z_label)
+            # compare against grayscale target (same as loss_function_shape does)
+            x_gray = image.view(-1, 3, 28, 28).mean(1)
+            x_gray = torch.stack([x_gray, x_gray, x_gray], dim=1)
+            loss_of_labels = F.binary_cross_entropy(recon_from_label.view(-1, 28*28*3), x_gray.view(-1, 28*28*3), reduction='sum')
+        else:
+            loss_of_labels = loss_label(z_label, z_actual)
+
         loss_of_labels.backward(retain_graph = True)    #adjust the weights so that the label network output resembles the latent activation
         train_loss += loss_of_labels.item()      
 
         optimizer.step()
 
-        if i % max_iter == 0 and i > 0:   #every 1000 samples grab a random sample
+        if i % max_iter == 0 and i > 0:   #every 100 samples grab a random sample
             label_net.eval()
-            #vae.eval()
+            vae.eval()
 
             if whichcomponent == 'color':   #grab the appropriate decoder from the VAE
                 feature_decoder = vae.color_decode_wrapper
@@ -219,11 +230,11 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
             with torch.no_grad():   #Use them to reconstruct an object
                 #feature_recon = feature_decoder(z_actual)         # recon from an actual object
                 if whichcomponent == 'color':
-                    feature_recon, _, _, _, _ = vae(image, 'color', ['color'])
+                    feature_recon, _, _, _, _,_,_ = vae(image, 'color', ['color'])
                 elif whichcomponent == 'shape':
-                    feature_recon, _, _, _, _= vae(image, 'shape', ['shape'])
+                    feature_recon, _, _, _, _,_,_= vae(image, 'cropped', ['shape'])
                 else:
-                    feature_recon, _, _, _, _= vae(image, 'object', ['object'])
+                    feature_recon, _, _, _, _,_,_= vae(image, 'cropped_object', ['object'])
                 feature_recon_label = feature_decoder(z_label)
 
 

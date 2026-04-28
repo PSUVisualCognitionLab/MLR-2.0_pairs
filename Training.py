@@ -20,8 +20,6 @@ parser.add_argument("--end_ep", type=int, default=100, help="what epoch to train
 args = parser.parse_args()
 
 
-
-
 # prerequisites
 import torch
 import os
@@ -33,6 +31,7 @@ from MLR_src.label_network import train_labelnet
 from MLR_src.train_classifiers_revised import train_classifiers
 from training_constants import training_datasets, training_components
 from itertools import cycle
+from torchvision.utils import save_image
 
 folder_name = args.folder
 checkpoint_folder_path = f'checkpoints/{folder_name}/' # the output folder for the trained model versions
@@ -79,7 +78,7 @@ obj_latent_flag = True   #this flag determines whether the VAE has an obj latent
 if load is True:
     vae = load_checkpoint(f'{checkpoint_folder_path}{args.checkpoint_name}', d, obj_latent_flag)
     dimensions = load_dimensions(f'{checkpoint_folder_path}/{args.checkpoint_name}', d)
-    print('checkpoint loaded')     
+    print('checkpoint loaded from folder'+checkpoint_folder_path +args.checkpoint_name)     
 
 else:
     dimensions = [-1, -1, 128, args.z_dim]
@@ -118,6 +117,18 @@ vae.to(device)
 
 print(f'Training: {args.train_list}')
 epoch_count = args.end_ep
+
+data, labels = next(iter(dataloaders['emnist-map']))
+image = data[1].cuda()
+
+with torch.no_grad():
+    recon, _, _, _, _,_,_ = vae(image, 'shape', ['shape'])
+
+save_image(
+    torch.cat([image[:25], recon[:25]], 0),
+    'quick_test_recon.png', nrow=25)
+
+
 
 #train mVAE
 if 'mVAE' in args.train_list:
