@@ -28,6 +28,7 @@ mnist_data_old
 *.log
 *.joblib
 .venv/
+.venv_old/
 .venv/bin/
 wandb/
 *.out
