@@ -113,11 +113,10 @@ class VAE_CNN(nn.Module):
         self.fc33 = nn.Linear(h_dim2, z_dim)  # color
         self.fc34 = nn.Linear(h_dim2, z_dim)
 
-        if draw_dim is True:  #used for quickdraw dataset
-            # bottle neck part  # Latent vectors mu and sigma
-            self.fc35 = nn.Linear(h_dim2, z_dim) # object
-            self.fc36 = nn.Linear(h_dim2, z_dim)
-            self.fc4o = nn.Linear(z_dim, h_dim2)  # object decoder
+        # bottle neck part  # Latent vectors mu and sigma
+        self.fc35 = nn.Linear(h_dim2, z_dim) # object
+        self.fc36 = nn.Linear(h_dim2, z_dim)
+        self.fc4o = nn.Linear(z_dim, h_dim2)  # object decoder
 
         # decoder part
         self.fc4s = nn.Linear(z_dim, h_dim2)  # shape
@@ -261,9 +260,19 @@ class VAE_CNN(nn.Module):
         return self.fc35(h), self.fc36(h) # mu, log_var
 
     def activations(self, x, retinal=False, hskip = None, which_encode=None): # returns shape, color, scale, location, and skip(l1) latent activations
+                
+        if type(x) == list or type(x) == tuple:
+            if retinal:
+                    x = x[0].cuda()
+            else:
+                    x = x[1].cuda()
+        else:
+            x = x.cuda()
+            
         if hskip is not None:   #skip connection activation  (not sure what latent this is )
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x, hskip)
             mu_object, log_var_object = self.encoder_object(x, hskip)
+            theta = None
         
         elif retinal is True:    #passing in a full retina as input and extracting the latent coding of the cropped representation
             x, theta = self.stn_encode(x)
@@ -273,6 +282,7 @@ class VAE_CNN(nn.Module):
         else:  #passing in just cropped image
             mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
             mu_object, log_var_object = self.encoder_object(x)
+            theta = None
         
         z_shape = self.sampling(mu_shape, log_var_shape)
         z_color = self.sampling(mu_color, log_var_color)
@@ -284,10 +294,10 @@ class VAE_CNN(nn.Module):
         else:
             z_scale = 0
             z_location = 0
-        
         loss_params = [mu_shape, log_var_shape, mu_color, log_var_color, mu_object, log_var_object]
-        out_dict = {'shape':z_shape, 'color':z_color, 'object':z_object, 'scale':z_scale, 'location':z_location, 'skip':hskip, 'loss_params':loss_params}
-
+        out_dict = {'shape':z_shape, 'color':z_color, 'object':z_object,
+            'scale':z_scale, 'location':z_location, 'skip':hskip,
+            'theta':theta, 'loss_params':loss_params}
         return out_dict
 
     def decoder(self, activations, which_decode): #generic decoder function
@@ -488,45 +498,28 @@ class VAE_CNN(nn.Module):
         return torch.sigmoid(h)
 
     def forward(self, x, whichdecode='noskip', keepgrad=[]):
-        # replace this logic with activations() call
-        '''if 'retinal' in whichdecode:    #passing in a cropped+ location as input
-            if type(x) == list or type(x) == tuple:
-                x = x[0].cuda()
-            else:
-                x = x.cuda()
-            
-            x, theta = self.stn_encode(x)
-            mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
-            mu_object, log_var_object = self.encoder_object(x)
-        else:  #passing in just cropped image
-            if type(x) == list or type(x) == tuple:
-                x = x[1].cuda()
-            else:
-                x = x.cuda()
-            mu_shape, log_var_shape, mu_color, log_var_color, hskip = self.encoder(x)
-            mu_object, log_var_object = self.encoder_object(x)
-        '''
-        activations = self.activations(x, retinal = ('retinal' in whichdecode), hskip = None)
-        mu_shape, log_var_shape, mu_color, log_var_color, mu_object, log_var_object = activations['loss_params']
-        
+        # encode via activations() — single source of truth for encoding
+        act = self.activations(x, retinal=('retinal' in whichdecode), hskip=None)
+        mu_shape, log_var_shape, mu_color, log_var_color, mu_object, log_var_object = act['loss_params']
+        theta = act['theta']
+        hskip = act['skip']
 
         # the maps that are used in the training process.. the others are detached to zero out those gradients
+        # gradient gating: only the latents in keepgrad retain gradients, others are detached
         if ('shape' in keepgrad):
-            z_shape = activations['shape']
+            z_shape = act['shape']
         else:
-            z_shape = activations['shape'].detach()
+            z_shape = act['shape'].detach()
 
         if ('color' in keepgrad):
-            z_color = activations['color']
+            z_color = act['color']
         else:
-            z_color = activations['color'].detach()
+            z_color = act['color'].detach()
 
-        # add z_object handling here I'm not fully sure if this is the best way to do it
-        # check how keepgrad is put together first
         if ('object' in keepgrad):
-            z_object = activations['object']
+            z_object = act['object']
         else:
-            z_object = activations['object'].detach()
+            z_object = act['object'].detach()
 
         if ('skip' in keepgrad):
             hskip = hskip
@@ -641,28 +634,56 @@ def loss_function_scale(recon_x, x, mu, log_var):
     KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
     return BCE + KLD
 
+def loss_function_object(recon_x, x, mu, log_var, fg_weight=5.0):
+    if len(x) <= 5:
+        x = x[1].clone().cuda()
+    else:
+        x = x.clone().cuda()
+    # make grayscale target
+    gray_x = x.view(-1, 3, imgsize, imgsize).mean(1)
+    gray_x = torch.stack([gray_x, gray_x, gray_x], dim=1)
+    
+    # weight mask: foreground pixels get higher weight
+    gray_flat = gray_x.view(-1, imgsize * imgsize * 3)
+    weights = torch.ones_like(gray_flat) + gray_flat * (fg_weight - 1.0)
+    
+    recon_flat = recon_x.view(-1, imgsize * imgsize * 3)
+    BCE = F.binary_cross_entropy(recon_flat, gray_flat, weight=weights, reduction='sum')
+    KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
+    return BCE + KLD
+    
+def sobel_edges(x):
+    """Apply Sobel filter to extract edges. Input: (B, C, H, W)"""
+    sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32, device=x.device).view(1, 1, 3, 3)
+    sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float32, device=x.device).view(1, 1, 3, 3)
+    
+    # convert to grayscale single channel
+    gray = x.mean(dim=1, keepdim=True)
+    
+    edges_x = F.conv2d(gray, sobel_x, padding=1)
+    edges_y = F.conv2d(gray, sobel_y, padding=1)
+    edges = torch.sqrt(edges_x ** 2 + edges_y ** 2 + 1e-8)
+    
+    return edges
 
 # test recreate img with different features
 def progress_out(vae, data, checkpoint_folder,name):
     device = next(vae.parameters()).device 
     sample_size = 25
-    vae.eval()
+    #vae.eval()
+    vae.dropout.p = 0
     sample = data[:sample_size].to(device)   #the actual image
-    if('quickdraw' in name):
-        activations = vae.activations(sample, False,None,'object')   #get the activations from this image 
-        skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
-    
-        shape = vae.decoder_object(activations['shape'], 0, 0)                   # The shape reconstruction alone
-        recon = vae.decoder_cropped_object(activations['shape'],activations['color'])   #combine the shape and color maps to reconstructions
-    
-    else:
-        activations = vae.activations(sample, False)   #get the activations from this image 
-        skip = vae.decoder_skip_cropped(0, 0, 0, activations['skip'])            # the skip reconstruction
-    
-        shape = vae.decoder_shape(activations['shape'], 0, 0)                   # The shape reconstruction alone
-        recon = vae.decoder_cropped(activations['shape'],activations['color'])   #combine the shape and color maps to reconstructions
-    
-    color = vae.decoder_color(0, activations['color'], 0)                   #the color alone
+    with torch.no_grad():
+        if 'quickdraw' in name:
+            recon, _, _, _, _, _, _ = vae(sample, 'cropped_object', ['object', 'color'])
+            shape, _, _, _, _, _, _ = vae(sample, 'object', ['object'])
+        else:
+            recon, _, _, _, _, _, _ = vae(sample, 'cropped', ['shape', 'color'])
+            shape, _, _, _, _, _, _ = vae(sample, 'shape', ['shape'])
+        color, _, _, _, _, _, _ = vae(sample, 'color', ['color'])
+        skip, _, _, _, _, _, _ = vae(sample, 'skip_cropped', ['skip'])
+
+    vae.dropout.p = 0.1 
     vae.train()
      
     output_img = torch.cat([sample.view(sample_size, 3, imgsize, imgsize)[:25], recon.view(sample_size, 3, imgsize, imgsize)[:25], skip.view(sample_size, 3, imgsize, imgsize)[:25],
@@ -687,8 +708,6 @@ def progress_out(vae, data, checkpoint_folder,name):
 
     utils.save_image(new_tensor,f'training_samples/{checkpoint_folder}/cropped_sample_{name}.png',
             nrow=1, normalize=False)
-   
-
 
 
 
@@ -697,7 +716,7 @@ def test_loss(vae, test_data, whichdecode = []):
     vae.eval()
 
     for decoder in whichdecode:
-        recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(test_data, decoder)
+        recon_batch, mu_color, log_var_color, mu_shape, log_var_shape, _, _ = vae(test_data, decoder)
         
         if decoder == 'retinal':
             loss = loss_function(recon_batch, test_data, None)
@@ -754,9 +773,9 @@ def component_to_grad(comp): # determine gradient for component training
     elif comp == 'location':
         return ['location']
     elif comp == 'object':
-        return ['shape']
+        return ['object']
     elif comp == 'cropped_object':
-        return ['shape', 'color']
+        return ['object', 'color']
     elif comp == 'retinal_object':
         return []
     else:
@@ -771,7 +790,6 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
     loader = trange(max_iter, desc=f"epoch {epoch}") 
         
     train_loss_dict = {}
-    
     for i,j in enumerate(loader):  
         count += 1
         
@@ -789,7 +807,6 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             # if the dataloader has retinal=True, take the cropped img for cropped components
             #print(f'data: {sample_dataloader_name} decode: {whichdecode_use}')
             
-
             if type(sample) == list:
                 if whichdecode_use in ['cropped', 'shape', 'color', 'object', 'cropped_object']:
                     sample = sample[1]   # cropped version
@@ -798,11 +815,10 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             samples += [sample]
 
         data = torch.cat(samples, 0)
-        #print(data.size())
-        #print(whichdecode_use)
+
         keepgrad = component_to_grad(whichdecode_use)        
         
-        recon_batch, mu_color, log_var_color, mu_shape, log_var_shape = vae(data, whichdecode_use, keepgrad)
+        recon_batch, mu_color, log_var_color, mu_shape, log_var_shape, mu_object, log_var_object = vae(data, whichdecode_use, keepgrad)
             
         if whichdecode_use == 'shape':  # emnist and mnist shape
             loss = loss_function_shape(recon_batch, data, mu_shape, log_var_shape)
@@ -819,21 +835,33 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
                     torch.cat([data.view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
                                ], 0),
-                    f"training_samples/{checkpoint_folder}/retinal_recon_ColorLetter{epoch%2}.png",
+                    f"training_samples/{checkpoint_folder}/retinal_recon_ColorLetter{epoch}.png",
                     nrow=25, normalize=False)
 
         elif whichdecode_use == 'cropped': # cropped
             loss = loss_function_crop(recon_batch, data)
-
+            if count >= 0.9*max_iter and epoch % 5 == 1:
+                utils.save_image(
+                    torch.cat([data.view(-1, 3, 28, 28)[:25].cpu(),
+                            recon_batch.view(-1, 3, 28, 28)[:25].cpu()], 0),
+                    f"training_samples/{checkpoint_folder}/cropped_recon_{epoch}.png",
+                    nrow=25, normalize=False)
+                
         elif whichdecode_use == 'skip_cropped': # skip training
             loss = loss_function_crop(recon_batch, data)
-
-        elif whichdecode_use == 'object': # quickdraw object training
-            loss = loss_function_shape(recon_batch, data, mu_shape, log_var_shape)
         
+        elif whichdecode_use == 'object': # quickdraw object training
+            loss = loss_function_object(recon_batch, data, mu_object, log_var_object)
+
         elif whichdecode_use == 'cropped_object': # cropped quickdraw object training
             loss = loss_function_crop(recon_batch, data)
-        
+            if count >= 0.9*max_iter and epoch % 5 == 1:
+                utils.save_image(
+                    torch.cat([data.view(-1, 3, 28, 28)[:25].cpu(),
+                            recon_batch.view(-1, 3, 28, 28)[:25].cpu()], 0),
+                    f"training_samples/{checkpoint_folder}/cropped_object_recon_{epoch}.png",
+                    nrow=25, normalize=False)
+                
         elif whichdecode_use == 'retinal_object': # retinal quickdraw object training
             loss = loss_function(recon_batch['recon'], data, None)
             #demonstrate the quality of reconstructions of objects at specific locations and scales and colors on the retina
@@ -842,7 +870,7 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
                     torch.cat([data.view(-1, 3, retina_size, retina_size)[:25].cpu(), recon_batch['recon'].view(-1, 3, retina_size, retina_size)[:25].cpu() 
                                #,place_crop(recon_batch['crop'],data[2]).view(-1, 3, retina_size, retina_size)[:25].cpu()
                                ], 0),
-                    f"training_samples/{checkpoint_folder}/retinal_recon_obj_{epoch%2}.png",
+                    f"training_samples/{checkpoint_folder}/retinal_recon_obj_{epoch}.png",
                     nrow=25, normalize=False)
         
         # track most recent loss metrics
@@ -859,22 +887,13 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
         test_data, labels = next(dataloaders['emnist-map'])
         #progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))    #this is used to test progress_out without waiting for a whole epoch
 
-        if count % int(0.9*max_iter) == 0:
+        if count % int(0.9*max_iter) == 0 and epoch % 5 == 1:
             #test_data, j = next(test_iter)
-            try:
-            
-                test_data, labels = next(dataloaders['emnist-map'])
-                progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch%2))
-            except:
-                print('Progress_out failed to create a training sample image for emnist')
-                pass
-            try:
-                test_data, labels = next(dataloaders['quickdraw'])
-                progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch%2))
-            except:
-                print('Progress_out failed to create a training sample image for quickdraw')
-                pass
-
+            test_data, labels = next(dataloaders['emnist-map'])
+            progress_out(vae, test_data[1], checkpoint_folder,'emnist'+str(epoch))
+            test_data, labels = next(dataloaders['quickdraw-map'])
+            progress_out(vae, test_data[1], checkpoint_folder,'quickdraw'+str(epoch))
+           
 
         #elif count % 500 == 0: not for RED GREEN
          #   data = data_noSkip[0][1] + data_skip[0]

@@ -19,7 +19,7 @@ bs = 100
 s_classes = 36
 c_classes = 10
 
-def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder):
+def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder, trained_components):
     if not os.path.exists('training_samples/'):
         os.mkdir('training_samples/')
     
@@ -38,9 +38,14 @@ def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder):
     optimizer_colorlabels= optim.Adam(vae_color_labels.parameters())
     optimizer_objectlabels= optim.Adam(vae_object_labels.parameters())
 
-    label_nets = {'shape':[vae_shape_labels, optimizer_shapelabels],
-                  'object': [vae_object_labels, optimizer_objectlabels],
-                  'color': [vae_color_labels, optimizer_colorlabels]}
+    
+    label_nets = {}
+    if 'shape' in trained_components:
+        label_nets['shape'] = [vae_shape_labels, optimizer_shapelabels]
+    if 'object' in trained_components:
+        label_nets['object'] = [vae_object_labels, optimizer_objectlabels]
+    if 'color' in trained_components:
+        label_nets['color'] = [vae_color_labels, optimizer_colorlabels]
 
     for whichcomponent in label_nets:
         label_net, optimizer = label_nets[whichcomponent]
@@ -53,8 +58,6 @@ def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder):
             'state_dict_shape_labels': vae_shape_labels.state_dict(),
             'state_dict_color_labels': vae_color_labels.state_dict(),
             'state_dict_object_labels': vae_object_labels.state_dict(),
-
-
             'optimizer_shape' : optimizer_shapelabels.state_dict(),
             'optimizer_color': optimizer_colorlabels.state_dict(),
             'optimizer_object': optimizer_objectlabels.state_dict(),
@@ -146,6 +149,7 @@ def loss_label(label_act,image_act):
 
 def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer, folder_path):    
     device = next(vae.parameters()).device
+    vae.eval()
     train_loss = 0
 
     label_net.train().to(device)
@@ -153,7 +157,7 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
     dataiter = train_loader
 
     max_iter = 100
-    for i , j in enumerate(train_loader):
+    for i ,j  in enumerate(train_loader):  # j is not used but it needs to be here
         optimizer.zero_grad()
 
         image, labels = next(dataiter)
@@ -181,16 +185,38 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
 
         activations = vae.activations(image, False)  #load activity for each of the latent spaces based on the image
         z_actual = activations[whichcomponent]   #extract the activity for that latent representation
+        '''
+        # don't use the randomized output for training, instead just use the mu
+        
+        mu_shape, _, mu_color, _, hskip = vae.encoder(image)
+        mu_object, _ = vae.encoder_object(image)
+        if whichcomponent == 'shape':
+            z_actual = mu_shape
+        elif whichcomponent == 'color':
+            z_actual = mu_color
+        elif whichcomponent == 'object':
+            z_actual = mu_object
+        '''
 
         # train shape label net
         
-        loss_of_labels = loss_label(z_label, z_actual)   #compute the error
+        #loss_of_labels = loss_label(z_label, z_actual)   #compute the error
+
+        if whichcomponent == 'object':
+            recon_from_label = vae.decoder_object(z_label)
+            # compare against grayscale target (same as loss_function_shape does)
+            x_gray = image.view(-1, 3, 28, 28).mean(1)
+            x_gray = torch.stack([x_gray, x_gray, x_gray], dim=1)
+            loss_of_labels = F.binary_cross_entropy(recon_from_label.view(-1, 28*28*3), x_gray.view(-1, 28*28*3), reduction='sum')
+        else:
+            loss_of_labels = loss_label(z_label, z_actual)
+
         loss_of_labels.backward(retain_graph = True)    #adjust the weights so that the label network output resembles the latent activation
         train_loss += loss_of_labels.item()      
 
         optimizer.step()
 
-        if i % 1000 == 0:   #every 1000 samples grab a random sample
+        if i % max_iter == 0 and i > 0:   #every 100 samples grab a random sample
             label_net.eval()
             vae.eval()
 
@@ -202,8 +228,15 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
                 feature_decoder = vae.decoder_object
 
             with torch.no_grad():   #Use them to reconstruct an object
-                feature_recon = feature_decoder(z_actual)         # recon from an actual object
-                feature_recon_label = feature_decoder(z_label)    #recon from a label 
+                #feature_recon = feature_decoder(z_actual)         # recon from an actual object
+                if whichcomponent == 'color':
+                    feature_recon, _, _, _, _,_,_ = vae(image, 'color', ['color'])
+                elif whichcomponent == 'shape':
+                    feature_recon, _, _, _, _,_,_= vae(image, 'cropped', ['shape'])
+                else:
+                    feature_recon, _, _, _, _,_,_= vae(image, 'cropped_object', ['object'])
+                feature_recon_label = feature_decoder(z_label)
+
 
                 sample_size = 20
                 orig_imgs = image[:sample_size]
@@ -230,7 +263,6 @@ def train_labels(vae, label_net, whichcomponent, epoch, train_loader, optimizer,
             new_tensor[:, header_height:, :] = output_img2
             text_tensor = text_to_tensor("Image / recon from encoder / recon from label ",header_height,width)
             new_tensor[:, :header_height, :] = text_tensor
-
             utils.save_image(new_tensor,
                 f'{folder_path}{whichcomponent}{str(epoch).zfill(5)}_{str(i).zfill(5)}.png',
                 nrow = 1,
