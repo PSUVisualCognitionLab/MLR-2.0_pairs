@@ -1103,7 +1103,7 @@ def fig_generative_noise(vae: VAE_CNN, shape_label, s_classes, color_label, c_cl
         print("generative noise plot")
         bs = 2
         x, y= 5, 5
-        num1 = 1
+        num1 = 25
         num2 = 6
         device = next(vae.parameters()).device
         shape_label.to(device)

@@ -16,10 +16,14 @@ parser.add_argument("--wandb", type=bool, default=False, help="Track training wi
 parser.add_argument("--checkpoint_name", type=str, default='mVAE_checkpoint.pth', help="file name of checkpoint .pth")
 parser.add_argument("--start_ep", type=int, default=1, help="what epoch to resume training")
 parser.add_argument("--end_ep", type=int, default=100, help="what epoch to train to")
+parser.add_argument("--wait", type=int, default=0, help="how many seconds to wait before training")
 #parser.add_argument("--batch_size", nargs='+', type=int, default=['mVAE', 'label_net', 'SVM'], help="Which components to train")
 args = parser.parse_args()
 
-
+wait_time = args.wait
+if wait_time > 0:
+    print(f'Waiting for {wait_time} seconds before training...')
+    time.sleep(wait_time)
 # prerequisites
 import torch
 import os

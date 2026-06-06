@@ -11,7 +11,7 @@ def train_mVAE(dataloaders, components, vae, epoch_count, checkpoint_folder, use
         from MLR_src.wandb_setup import initialize_wandb, log_system_metrics
         initialize_wandb('final-training', {'version':'MLR_2.0_2D_RETINA_STN'}, checkpoint_folder)
 
-    optimizer = optim.Adam(vae.parameters(), lr=0.0001)
+    optimizer = optim.Adam(vae.parameters(), lr=0.00007)
     seen_labels = {}
         
     #components_no_skip = [s for s in components if "skip" not in s  ]

@@ -18,6 +18,8 @@
 #Hedayati, S., Beaty, R., & Wyble, B. (2021). Seeking the Building Blocks of Visual Imagery and Creativity in a Cognitively Inspired Neural Network. arXiv preprint arXiv:2112.06832.
 
 # prerequisites
+from itertools import chain
+
 import torch
 import numpy as np
 import torch.nn as nn
@@ -107,11 +109,12 @@ class VAE_CNN(nn.Module):
         self.fc2 = nn.Linear(int(imgsize / 4) * int(imgsize / 4)*16, h_dim2)
         self.fc_bn2 = nn.BatchNorm1d(h_dim2)
 
+        c = 0
         # bottle neck part  # Latent vectors mu and sigma
         self.fc31 = nn.Linear(h_dim2, z_dim)  # shape
         self.fc32 = nn.Linear(h_dim2, z_dim)
-        self.fc33 = nn.Linear(h_dim2, z_dim)  # color
-        self.fc34 = nn.Linear(h_dim2, z_dim)
+        self.fc33 = nn.Linear(h_dim2, z_dim-c)  # color
+        self.fc34 = nn.Linear(h_dim2, z_dim-c)
 
         # bottle neck part  # Latent vectors mu and sigma
         self.fc35 = nn.Linear(h_dim2, z_dim) # object
@@ -120,7 +123,7 @@ class VAE_CNN(nn.Module):
 
         # decoder part
         self.fc4s = nn.Linear(z_dim, h_dim2)  # shape
-        self.fc4c = nn.Linear(z_dim, h_dim2)  # color
+        self.fc4c = nn.Linear(z_dim-c, h_dim2)  # color
 
         self.fc5 = nn.Linear(h_dim2, int(imgsize/4) * int(imgsize/4) * 16)
         self.fc8 = nn.Linear(16*28*28,16*28*28) #skip conection
@@ -553,7 +556,7 @@ class VAE_CNN(nn.Module):
         return output, mu_color, log_var_color, mu_shape, log_var_shape, mu_object, log_var_object
 
 # function to build a model instance
-def vae_builder(dimensions = [retina_size * retina_size * 3, 256, 128, 8], draw_dim = False):
+def vae_builder(dimensions = [retina_size * retina_size * 3, 256, 128, 10], draw_dim = False):
     assert len(dimensions) >= 4, f'there should be 4 elements in the dimensions input list, there are only {len(dimensions)}\n'
     x_dim = retina_size * retina_size * 3
     h_dim1 = 256
@@ -588,9 +591,59 @@ def loss_function_crop(recon_x, x):
     BCE = F.binary_cross_entropy(recon_x.view(-1, imgsize * imgsize * 3), x.view(-1, imgsize * imgsize * 3), reduction='sum')
     return BCE
 
+from MLR_src.dataset_builder import _rgb_to_lab, L_MIN, L_MAX
 
 # loss for shape in a cropped image
+def rgb_to_L_norm(imgs_rgb: torch.Tensor, l_min: float = L_MIN, l_max: float = L_MAX) -> torch.Tensor:
+    """
+    Convert a batch of RGB images to normalised L* in [0, 1].
+    imgs_rgb : (B, 3, H, W) float32 in [0, 1], on any device
+    returns  : (B, 1, H, W) float32 in [0, 1]
+    """
+    # 1. sRGB → linear RGB (undo gamma)
+    linear = torch.where(
+        imgs_rgb <= 0.04045,
+        imgs_rgb / 12.92,
+        ((imgs_rgb + 0.055) / 1.055) ** 2.4,
+    )
+
+    # 2. linear RGB → XYZ (D65 illuminant)
+    # weights: (3,) applied across the channel dim
+    # Y (luminance) is all we need for L*
+    Y = (0.2126 * linear[:, 0] +
+         0.7152 * linear[:, 1] +
+         0.0722 * linear[:, 2]).unsqueeze(1)   # (B, 1, H, W)
+
+    # 3. XYZ → L*  (Y/Yn where Yn=1 for D65)
+    delta = 6.0 / 29.0
+    L = torch.where(
+        Y > delta ** 3,
+        116.0 * Y.pow(1.0 / 3.0) - 16.0,
+        (29.0 / 3.0) ** 3 * Y,   # linear region near black
+    )
+
+    # 4. invert the colorize mapping back to [0, 1]
+    return ((L - l_min) / (l_max - l_min)).clamp(0.0, 1.0)
+
 def loss_function_shape(recon_x, x, mu, log_var):
+    if len(x) <= 5:
+        x = x[1].clone().cuda()
+    else:
+        x = x.clone().cuda()
+
+    imgs = x.view(-1, 3, imgsize, imgsize)
+    L_norm = rgb_to_L_norm(imgs)                          # (B, 1, H, W), on GPU
+    gray_x = L_norm.expand(-1, 3, -1, -1).contiguous()
+
+    BCEGray = F.binary_cross_entropy(
+        recon_x.view(-1, imgsize * imgsize * 3),
+        gray_x.view(-1, imgsize * imgsize * 3),
+        reduction='sum'
+    )
+    KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
+    return BCEGray + KLD
+
+def loss_function_shape_old(recon_x, x, mu, log_var):
     if len(x) <= 5:
         x = x[1].clone().cuda()
     else:
@@ -601,10 +654,67 @@ def loss_function_shape(recon_x, x, mu, log_var):
     
     BCEGray = F.binary_cross_entropy(recon_x.view(-1, imgsize * imgsize * 3), gray_x.view(-1,imgsize * imgsize * 3), reduction='sum')
     KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
-    return BCEGray + KLD
+    return BCEGray + KLD * 2
 
 #loss for just color in a cropped image
-def loss_function_color(recon_x, x, mu, log_var):
+def loss_function_color_junk(recon_x, x, mu, log_var, beta=4.0):
+    if len(x) <= 5:
+        x = x[1].clone().cuda()
+    else:
+        x = x.clone().cuda()
+
+    # x shape: (B, 3, H*W) — flatten spatial if not already
+    if x.dim() == 4:
+        x = x.view(x.size(0), 3, -1)  # (B, 3, H*W)
+
+    brightness = x.max(dim=1).values          # (B, H*W)
+    mask = (brightness > 0.15).float()        # (B, H*W)
+    fg_count = mask.sum(dim=-1, keepdim=True).clamp(min=1)  # (B, 1)
+
+    # Compute mean color — result is (B,) each, then stack to (B, 3)
+    mean_r = (x[:, 0, :] * mask).sum(dim=-1) / fg_count.squeeze(-1)  # (B,)
+    mean_g = (x[:, 1, :] * mask).sum(dim=-1) / fg_count.squeeze(-1)
+    mean_b = (x[:, 2, :] * mask).sum(dim=-1) / fg_count.squeeze(-1)
+    target_color = torch.stack([mean_r, mean_g, mean_b], dim=1)  # (B, 3)
+
+    # Collapse recon spatially → (B, 3)
+    recon = recon_x.view(-1, 3, imgsize * imgsize)  # (B, 3, H*W)
+    recon_color = recon.mean(dim=-1)                # (B, 3)
+
+    # Both tensors now (B, 3) — no shape info anywhere
+    COLOR = F.mse_loss(recon_color, target_color, reduction='sum')
+
+    KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
+    return COLOR + beta * KLD
+
+def loss_function_color(recon_x, x, mu, log_var, beta=4.0):
+    if len(x) <= 5:
+        x = x[1].clone().cuda()
+    else:
+        x = x.clone().cuda()
+
+    recon = recon_x.clone().view(-1, 3 * imgsize * imgsize)
+
+    brightness = x.max(dim=1).values
+    threshold = 0.15
+    mask = (brightness > threshold).float()
+    fg_count = mask.sum(dim=-1, keepdim=True).clamp(min=1)
+
+    mean_r = (x[:, 0, :] * mask).sum(dim=-1, keepdim=True) / fg_count
+    mean_g = (x[:, 1, :] * mask).sum(dim=-1, keepdim=True) / fg_count
+    mean_b = (x[:, 2, :] * mask).sum(dim=-1, keepdim=True) / fg_count
+
+    newx = x.clone()
+    newx[:, 0, :] = mean_r
+    newx[:, 1, :] = mean_g
+    newx[:, 2, :] = mean_b
+    newx = newx.view(-1, imgsize * imgsize * 3)
+
+    BCE = F.binary_cross_entropy(recon, newx, reduction='sum')
+    KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
+    return BCE + beta * KLD
+
+def loss_function_color_old(recon_x, x, mu, log_var):
     if len(x) <= 5:
         x = x[1].clone().cuda()
     else:
@@ -622,7 +732,7 @@ def loss_function_color(recon_x, x, mu, log_var):
     newx = newx.view(-1, imgsize * imgsize * 3)
     BCE = F.binary_cross_entropy(recon, newx, reduction='sum')
     KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
-    return BCE + KLD
+    return BCE + KLD * 2
 
 #loss for just location
 def loss_function_location(recon_x, x, mu, log_var):
@@ -654,7 +764,7 @@ def loss_function_object(recon_x, x, mu, log_var, fg_weight=5.0):
     recon_flat = recon_x.view(-1, imgsize * imgsize * 3)
     BCE = F.binary_cross_entropy(recon_flat, gray_flat, weight=weights, reduction='sum')
     KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
-    return BCE + KLD
+    return BCE + KLD * 2
     
 def sobel_edges(x):
     """Apply Sobel filter to extract edges. Input: (B, C, H, W)"""
@@ -790,9 +900,8 @@ def batch_samples(sample_dataloaders, dataloaders, whichdecode_use):
     labels = []
     for sample_dataloader_name in sample_dataloaders:
         sample_dataloader = dataloaders[sample_dataloader_name]
-        sample, sample_labels = next(sample_dataloader)  #load some data from this particular loader
+        sample, sample_labels = next(sample_dataloader)  # load some data from this particular loader
         # if the dataloader has retinal=True, take the cropped img for cropped components
-        #print(f'data: {sample_dataloader_name} decode: {whichdecode_use}')
         
         if type(sample) == list:
             if whichdecode_use in ['cropped', 'shape', 'color', 'object', 'cropped_object']:
@@ -800,9 +909,15 @@ def batch_samples(sample_dataloaders, dataloaders, whichdecode_use):
             else:
                 sample = sample[0]   #Retina version 
         samples += [sample]
-        labels += sample_labels
+        if not labels:
+            labels = [[] for _ in sample_labels]
+        for i, t in enumerate(sample_labels):
+            labels[i].append(t)
 
-    return torch.cat(samples, 0), labels
+    samples = torch.cat(samples, 0)
+    labels = [torch.cat(l, 0) for l in labels]
+    perm = torch.randperm(samples.shape[0])
+    return samples[perm], [l[perm] for l in labels]
 
 def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels = {}, components = {}, max_iter = 600, checkpoint_folder=None):
     #components is the list of model latents that will be trained, and these are weighted by repeating some of them.  

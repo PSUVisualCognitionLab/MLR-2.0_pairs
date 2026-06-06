@@ -9,6 +9,8 @@ from torchvision import transforms as torch_transforms
 from torch.utils import data #.data import #DataLoader, Subset, Dataset
 import random
 import math
+from skimage import color as skcolor
+import warnings
 from PIL import Image, ImageOps, ImageEnhance, __version__ as PILLOW_VERSION, ImageDraw
 
 colornames = ["red", "green", "blue", "purple", "yellow", "cyan", "orange", "brown", "pink", "white"]
@@ -25,6 +27,10 @@ colorvals = [
     [1 - colorrange, 1 - colorrange * 3, 1 - colorrange * 3],
     [1-colorrange,1-colorrange,1-colorrange]
 ]
+
+L_MIN = 0   # darkest pixel: this L* value
+L_MAX = 50.0   # brightest pixel: this L* value
+AB_VARIATION_SCALE = 30.0
 
 def _load_memmap(path: str) -> np.memmap:
     arr = np.load(path, mmap_mode="r")
@@ -51,7 +57,101 @@ class RandomRotate90:
         k = torch.randint(0, 4, ()).item()            # 0,1,2,3
         return torch_transforms.functional.rotate(img, angle=90 * k)
 
+def _rgb_to_lab(rgb_0_1):
+    arr = np.array(rgb_0_1, dtype=np.float64).reshape(1, 1, 3)
+    return skcolor.rgb2lab(arr).reshape(3)
+
+def _max_chroma_scale(a, b, l_min=L_MIN):
+    """
+    Binary-search for the largest scale s in [0,1] such that the Lab colour
+    (l_min, a*s, b*s) converts to a non-negative sRGB triplet.
+    The worst case is always the darkest pixel (l_min), so we only need to
+    check that one L* value.
+    """
+    if a == 0 and b == 0:
+        return 1.0
+    lo, hi = 0.0, 1.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(20):          # 20 iterations → precision < 1e-6
+            mid = (lo + hi) / 2.0
+            lab = np.array([[[l_min, a * mid, b * mid]]])
+            rgb = skcolor.lab2rgb(lab)
+            if rgb.min() >= 0.0:
+                lo = mid
+            else:
+                hi = mid
+    return lo
+
+colorvals_lab = []   # (L*, a*, b*, chroma_scale)
+ 
+for rgb in colorvals:
+    L, a, b = _rgb_to_lab(rgb)
+    scale = _max_chroma_scale(a, b)
+    colorvals_lab.append((L, a, b, scale))
+
 class Colorize_specific:
+    """
+    Drop-in replacement for Colorize_specific that works in CIELAB.
+ 
+    Parameters
+    ----------
+    col : int
+        Index into colornames / colorvals_lab (same index as before).
+    l_min, l_max : float
+        Luminance range [0, 100] to which the grayscale is linearly mapped.
+    ab_variation_scale : float
+        Scales the ±colorrange random variation into a*/b* units.
+    """
+ 
+    def __init__(
+        self,
+        col: int,
+        l_min: float = L_MIN,
+        l_max: float = L_MAX,
+        ab_variation_scale: float = AB_VARIATION_SCALE,
+    ):
+        self.col = col
+        self.l_min = l_min
+        self.l_max = l_max
+        self.ab_variation_scale = ab_variation_scale
+ 
+    def __call__(self, img: Image.Image) -> Image.Image:
+        # 1. convert to 8-bit grayscale
+        gray = np.array(img.convert("L"), dtype=np.float64)   # [0, 255]
+        H, W = gray.shape
+ 
+        # 2. normalise grayscale → L* in [l_min, l_max]
+        g_norm = gray / 255.0
+        L = self.l_min + g_norm * (self.l_max - self.l_min)
+ 
+        # 3. sample a*/b* near the base colour centroid
+        _, base_a, base_b, chroma_scale = colorvals_lab[self.col]
+ 
+        # apply gamut scale first, then add variation within the scaled space
+        a_center = base_a * chroma_scale
+        b_center = base_b * chroma_scale
+        var = colorrange * self.ab_variation_scale
+        a_val = a_center + np.random.uniform(-var, var)
+        b_val = b_center + np.random.uniform(-var, var)
+ 
+        # 4. build full Lab image  (H × W × 3)
+        lab_img = np.stack(
+            [L, np.full((H, W), a_val), np.full((H, W), b_val)],
+            axis=-1,
+        )
+ 
+        # 5. convert Lab → sRGB; clip residual float errors only
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            rgb_float = skcolor.lab2rgb(lab_img).clip(0.0, 1.0)
+ 
+        rgb_uint8 = (rgb_float * 255).astype(np.uint8)
+        bg_mask = gray < 8          # tweak threshold as needed
+        rgb_uint8[bg_mask] = 0
+        return Image.fromarray(rgb_uint8, "RGB")
+
+class Colorize_specific_RGB:
     def __init__(self, col):
         self.col = col
 

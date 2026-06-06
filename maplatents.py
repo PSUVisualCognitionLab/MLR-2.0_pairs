@@ -61,8 +61,9 @@ for component in args.components:
 # collect latent activations and images
 def collect_latents(vae, dataloaders, component, n_samples, use_mu=True):
     """Collect latent vectors, labels, and cropped images for a given component"""
-    dataset_name = training_components[component][0][0]
-    dataloader = dataloaders[dataset_name]
+    dataset_names = training_components[component][0]
+    # use all datasets per component
+    dataloaders = cycle([dataloaders[dataset_name] for dataset_name in dataset_names])
     
     all_latents = []
     all_shape_labels = []
@@ -71,6 +72,7 @@ def collect_latents(vae, dataloaders, component, n_samples, use_mu=True):
     collected = 0
 
     while collected < n_samples:
+        dataloader = next(dataloaders)
         data, labels = next(dataloader)
         if type(data) == list:
             image = data[1].to(device)
