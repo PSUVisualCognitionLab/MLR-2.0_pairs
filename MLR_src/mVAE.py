@@ -75,9 +75,17 @@ def load_dimensions(filepath, d=0):
         checkpoint = torch.load(filepath, device)
     
     if 'dimensions' in checkpoint:
-        return checkpoint['dimensions']
+        if len(checkpoint['dimensions']) != 6:
+            dimensions = checkpoint['dimensions']
+            dimensions.append(dimensions[3])
+            dimensions.append(dimensions[3])
+
+        else:
+            dimensions = checkpoint['dimensions']
+        
+        return dimensions
     else:
-        return [-1, -1, 128, 8] #defaults
+        return [-1, -1, 128, 8, 8, 8] #defaults
 
 
 # model training data set and dimensions
@@ -93,11 +101,13 @@ vae_type_flag = 'CNN' # must be CNN or FC,  But FC is deprecated at this point
 #loss functions are: shape, color, location, retinal, cropped (shape + color combined), skip
 
 class VAE_CNN(nn.Module):
-    def __init__(self, x_dim, h_dim1, h_dim2, z_dim, draw_dim = False):
-        print('dimensions h_dim1 '+ str(h_dim1)+ 'hdim2 '+str(h_dim2) +'zdim '+str(z_dim)+'drawdim '+str(draw_dim))
+    def __init__(self, x_dim, h_dim1, h_dim2, shape_z_dim, color_z_dim, object_z_dim, draw_dim = False, c = 0):
+        print('dimensions h_dim1 '+ str(h_dim1)+ 'hdim2 '+str(h_dim2) +'shape_z_dim '+str(shape_z_dim)+'color_z_dim '+str(color_z_dim)+'object_z_dim '+str(object_z_dim)+'drawdim '+str(draw_dim))
         super(VAE_CNN, self).__init__()
         # encoder part
-        self.z_dim = z_dim
+        self.shape_z_dim = shape_z_dim
+        self.color_z_dim = color_z_dim
+        self.object_z_dim = object_z_dim
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False)
@@ -109,21 +119,21 @@ class VAE_CNN(nn.Module):
         self.fc2 = nn.Linear(int(imgsize / 4) * int(imgsize / 4)*16, h_dim2)
         self.fc_bn2 = nn.BatchNorm1d(h_dim2)
 
-        c = 0
+        c = 4
         # bottle neck part  # Latent vectors mu and sigma
-        self.fc31 = nn.Linear(h_dim2, z_dim)  # shape
-        self.fc32 = nn.Linear(h_dim2, z_dim)
-        self.fc33 = nn.Linear(h_dim2, z_dim-c)  # color
-        self.fc34 = nn.Linear(h_dim2, z_dim-c)
+        self.fc31 = nn.Linear(h_dim2, shape_z_dim)  # shape
+        self.fc32 = nn.Linear(h_dim2, shape_z_dim)
+        self.fc33 = nn.Linear(h_dim2, color_z_dim)  # color
+        self.fc34 = nn.Linear(h_dim2, color_z_dim)
 
         # bottle neck part  # Latent vectors mu and sigma
-        self.fc35 = nn.Linear(h_dim2, z_dim) # object
-        self.fc36 = nn.Linear(h_dim2, z_dim)
-        self.fc4o = nn.Linear(z_dim, h_dim2)  # object decoder
+        self.fc35 = nn.Linear(h_dim2, object_z_dim) # object
+        self.fc36 = nn.Linear(h_dim2, object_z_dim)
+        self.fc4o = nn.Linear(object_z_dim, h_dim2)  # object decoder
 
         # decoder part
-        self.fc4s = nn.Linear(z_dim, h_dim2)  # shape
-        self.fc4c = nn.Linear(z_dim-c, h_dim2)  # color
+        self.fc4s = nn.Linear(shape_z_dim, h_dim2)  # shape
+        self.fc4c = nn.Linear(color_z_dim, h_dim2)  # color
 
         self.fc5 = nn.Linear(h_dim2, int(imgsize/4) * int(imgsize/4) * 16)
         self.fc8 = nn.Linear(16*28*28,16*28*28) #skip conection
@@ -163,6 +173,11 @@ class VAE_CNN(nn.Module):
         # map scalars
         self.shape_scale = 1 #1.9
         self.color_scale = 1 #2
+
+    @property
+    def z_dim(self):
+        # the z_dim property is deprecated
+        raise AttributeError("the 'z_dim' property is deprecated, use: 'shape_z_dim', 'color_z_dim', or 'object_z_dim'")
 
     def construct_theta(self, z_where):   #used for the spatial transformer
         # Take a batch of three-vectors, and massages them into a batch of
@@ -556,14 +571,22 @@ class VAE_CNN(nn.Module):
         return output, mu_color, log_var_color, mu_shape, log_var_shape, mu_object, log_var_object
 
 # function to build a model instance
-def vae_builder(dimensions = [retina_size * retina_size * 3, 256, 128, 10], draw_dim = False):
+def vae_builder(dimensions = [retina_size * retina_size * 3, 256, 128, 10, 10, 10], draw_dim = False):
     assert len(dimensions) >= 4, f'there should be 4 elements in the dimensions input list, there are only {len(dimensions)}\n'
     x_dim = retina_size * retina_size * 3
     h_dim1 = 256
     h_dim2 = dimensions[2]
-    z_dim = dimensions[3]
+    if len(dimensions) == 4:
+        # older checkpoints used a single checkpoint size
+        z_dim = dimensions[3]
+        shape_z_dim, color_z_dim, object_z_dim = z_dim, z_dim, z_dim
 
-    vae = VAE_CNN(x_dim, h_dim1, h_dim2, z_dim, draw_dim)
+    elif len(dimensions) == 6:
+        shape_z_dim = dimensions[3]
+        color_z_dim = dimensions[4]
+        object_z_dim = dimensions[5]
+
+    vae = VAE_CNN(x_dim, h_dim1, h_dim2, shape_z_dim, color_z_dim, object_z_dim, draw_dim)
 
     return vae, dimensions
 
@@ -975,7 +998,8 @@ def train(vae, optimizer, epoch, dataloaders, return_loss = False, seen_labels =
             loss = loss_function_crop(recon_batch, data)
         
         elif whichdecode_use == 'object': # quickdraw object training
-            loss = loss_function_object(recon_batch, data, mu_object, log_var_object)
+            #loss = loss_function_object(recon_batch, data, mu_object, log_var_object)
+            loss = loss_function_shape(recon_batch, data, mu_object, log_var_object)
 
         elif whichdecode_use == 'cropped_object': # cropped quickdraw object training
             loss = loss_function_crop(recon_batch, data)

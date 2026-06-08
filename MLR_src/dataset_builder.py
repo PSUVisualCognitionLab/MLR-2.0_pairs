@@ -28,9 +28,9 @@ colorvals = [
     [1-colorrange,1-colorrange,1-colorrange]
 ]
 
-L_MIN = 0   # darkest pixel: this L* value
-L_MAX = 50.0   # brightest pixel: this L* value
-AB_VARIATION_SCALE = 30.0
+L_MIN = 50.0   # darkest pixel: this L* value
+L_MAX = 70.0   # brightest pixel: this L* value
+AB_VARIATION_SCALE = 50.0
 
 def _load_memmap(path: str) -> np.memmap:
     arr = np.load(path, mmap_mode="r")
@@ -147,7 +147,7 @@ class Colorize_specific:
             rgb_float = skcolor.lab2rgb(lab_img).clip(0.0, 1.0)
  
         rgb_uint8 = (rgb_float * 255).astype(np.uint8)
-        bg_mask = gray < 8          # tweak threshold as needed
+        bg_mask = gray < 10          # tweak threshold as needed
         rgb_uint8[bg_mask] = 0
         return Image.fromarray(rgb_uint8, "RGB")
 

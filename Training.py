@@ -10,7 +10,7 @@ parser.add_argument("--folder", type=str, default='test', help="Where to store c
 # VVV defines which components are trained
 parser.add_argument("--components", nargs='+', type=str, default=['shape', 'color', 'retinal', 'object', 'skip_cropped', 'cropped', 'retinal_object', 'cropped_object'], help="Which components to train")
 #parser.add_argument("--components", nargs='+', type=str, default=['shape', 'color', 'retinal', 'skip_cropped', 'cropped'], help="Which components to train")
-parser.add_argument("--z_dim", type=int, default=12, help="Size of the mVAE latent dimension")
+parser.add_argument("--z_dim", nargs='+', type=int, default=[10, 8, 8], help="Size of the mVAE latent dimensions, in order: shape, color, object")
 parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label_net', 'SVM'], help="Which models to train")
 parser.add_argument("--wandb", type=bool, default=False, help="Track training with wandb")
 parser.add_argument("--checkpoint_name", type=str, default='mVAE_checkpoint.pth', help="file name of checkpoint .pth")
@@ -85,7 +85,7 @@ if load is True:
     print('checkpoint loaded from folder'+checkpoint_folder_path +args.checkpoint_name)     
 
 else:
-    dimensions = [-1, -1, 128, args.z_dim]
+    dimensions = [-1, -1, 128, args.z_dim[0], args.z_dim[1], args.z_dim[2]]  #the dimensions of the mVAE latent spaces, in order: shape, color, retinal, object
     vae, dimensions = vae_builder(dimensions, obj_latent_flag)
 
 #vae = nn.DataParallel(vae)
@@ -142,7 +142,7 @@ if 'mVAE' in args.train_list:
 #train_labels
 if 'label_net' in args.train_list:
     print('Training: label networks')
-    train_labelnet(dataloaders, vae, 15, args.z_dim, folder_name, args.components)
+    train_labelnet(dataloaders, vae, 15, dimensions[3], dimensions[4], dimensions[5], folder_name, args.components)
 
 #train_classifiers
 if 'SVM' in args.train_list:

@@ -1,4 +1,4 @@
-from simulation_src.figure_panels import poster, individuated, interference, novel, addressability, generative, synthesis, compositional, flexibility
+from simulation_src.figure_panels import basic, poster, individuated, interference, novel, addressability, generative, synthesis, compositional, flexibility
 from MLR_src.mVAE import load_checkpoint
 from MLR_src.label_network import load_checkpoint_labels, s_classes, c_classes
 import torch
@@ -62,12 +62,13 @@ synthesis(vae, vae_shape_labels, s_classes, clf_objectS, simulation_folder_path)
 #individuated(vae, simulation_folder_path)  #generating and retrieving specific examples of objects
 
 #interference(vae, simulation_folder_path)
+basic(vae, simulation_folder_path)
 generative(vae, vae_shape_labels, s_classes, vae_color_labels, c_classes, simulation_folder_path)
 #addressability(vae, clf_color, simulation_folder_path)
 
-novel(vae, simulation_folder_path)
+#ovel(vae, simulation_folder_path)
 
 #compositional(vae, simulation_folder_path)
-flexibility(vae, simulation_folder_path)
+#flexibility(vae, simulation_folder_path)
 
 #novel(vae, simulation_folder_path)

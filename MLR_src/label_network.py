@@ -19,7 +19,7 @@ bs = 100
 s_classes = 36
 c_classes = 10
 
-def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder, trained_components):
+def train_labelnet(dataloaders, vae, epoch_count, shape_z_dim, color_z_dim, object_z_dim, checkpoint_folder, trained_components):
     if not os.path.exists('training_samples/'):
         os.mkdir('training_samples/')
     
@@ -30,9 +30,9 @@ def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder, trai
     if not os.path.exists(sample_folder_path):
         os.mkdir(sample_folder_path)
     
-    vae_shape_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=z_dim)
-    vae_object_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=z_dim)
-    vae_color_labels= VAEcolorlabels(xlabel_dim=10, hlabel_dim=7,  zlabel_dim=z_dim)
+    vae_shape_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=shape_z_dim)
+    vae_object_labels= VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=object_z_dim)
+    vae_color_labels= VAEcolorlabels(xlabel_dim=10, hlabel_dim=7,  zlabel_dim=color_z_dim)
 
     optimizer_shapelabels= optim.Adam(vae_shape_labels.parameters())
     optimizer_colorlabels= optim.Adam(vae_color_labels.parameters())
@@ -62,7 +62,9 @@ def train_labelnet(dataloaders, vae, epoch_count, z_dim, checkpoint_folder, trai
             'optimizer_color': optimizer_colorlabels.state_dict(),
             'optimizer_object': optimizer_objectlabels.state_dict(),
 
-            'z_dim': z_dim
+            'shape_z_dim': shape_z_dim,
+            'color_z_dim': color_z_dim,
+            'object_z_dim': object_z_dim
                 }
     torch.save(checkpoint, f'checkpoints/{checkpoint_folder}/label_network_checkpoint.pth')
 
@@ -124,10 +126,10 @@ def load_checkpoint_labels(filepath, label_type, d=0):
         device = 'cpu'
 
     checkpoint = torch.load(filepath)
-    if 'z_dim' not in checkpoint:
+    if f'{label_type}_z_dim' not in checkpoint:
         z_dim = 8
     else:
-        z_dim = checkpoint['z_dim']
+        z_dim = checkpoint[f'{label_type}_z_dim']
 
     label_net_dict = {"shape":VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=z_dim), 
                       "object": VAEshapelabels(xlabel_dim=s_classes, hlabel_dim=20,  zlabel_dim=z_dim),
