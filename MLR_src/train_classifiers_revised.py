@@ -117,9 +117,18 @@ def classifier_train(vae, whichcomponent, train_dataset, whichlabel):
 
     device = next(vae.parameters()).device
     with torch.no_grad():
-        data, labels = next(iter(train_dataset))
-        data = data[1]
-        train_labels = labels[labelindex].clone()
+        data = []
+        labels = []
+        for _ in range(5):
+            sample_data, sample_labels = next(iter(train_dataset))
+            sample_data = sample_data[1]
+            sample_labels = sample_labels[labelindex].clone()
+            data.append(sample_data)
+            labels.append(sample_labels)
+
+        data = torch.cat(data, dim=0)
+        train_labels = torch.cat(labels, dim=0)
+        #train_labels = labels[labelindex].clone()
         utils.save_image(data[0:10], 'train_sample.png')
         data = data.to(device)
         activations = vae.activations(data, False, None)
