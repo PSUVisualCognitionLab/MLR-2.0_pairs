@@ -8,7 +8,7 @@ parser.add_argument("--cuda", type=bool, default=True, help="Cuda availability")
 parser.add_argument("--cuda_device", type=int, default=1, help="Which cuda device to use")
 parser.add_argument("--folder", type=str, default='test', help="Where to store checkpoints in checkpoints/")
 # VVV defines which components are trained
-parser.add_argument("--components", nargs='+', type=str, default=['shape', 'color', 'retinal', 'object', 'skip_cropped', 'cropped', 'retinal_object', 'cropped_object'], help="Which components to train") #stn_retinal
+parser.add_argument("--components", nargs='+', type=str, default=['shape', 'color', 'retinal', 'object', 'cropped', 'retinal_object', 'cropped_object'], help="Which components to train") #stn_retinal
 #parser.add_argument("--components", nargs='+', type=str, default=['shape', 'color', 'retinal', 'skip_cropped', 'cropped'], help="Which components to train")
 parser.add_argument("--z_dim", nargs='+', type=int, default=[16, 6, 14], help="Size of the mVAE latent dimensions, in order: shape, color, object")
 parser.add_argument("--train_list", nargs='+', type=str, default=['mVAE', 'label_net', 'SVM'], help="Which models to train")
@@ -28,6 +28,7 @@ wait_time = args.wait
 if wait_time > 0:
     print(f'Waiting for {wait_time} seconds before training...')
     time.sleep(wait_time)
+
 # prerequisites
 import torch
 import os
@@ -80,6 +81,7 @@ else:
 
 bs=1000   #batch size for training the main VAE
 SVM_bs = 1000  #batch size for training the svm classifiers
+label_net_bs = 200  #batch size for training the label networks
 obj_latent_flag = True   #this flag determines whether the VAE has an obj latent space
 
 
@@ -96,6 +98,7 @@ else:
 
 dataloaders = {}
 SVM_dataloaders = {}
+label_net_dataloaders = {}
 weighted_components = [] #specifies the order/frequency the model latents will be trained
 
 
@@ -110,13 +113,27 @@ for component in args.components:
     for dataset in training_components[component][0]:
         dataset_name = dataset.split('-')[0]
         dataset_transforms = training_datasets[dataset]  #load the transforms for this dataset
-        dataloader = cycle(Dataset(dataset_name, dataset_transforms).get_loader(bs//len(training_components[component][0])))
+        loader_bs = max(bs//len(training_components[component][0]), 1)
+        dataloader = cycle(Dataset(dataset_name, dataset_transforms, True).get_loader(loader_bs))
         dataloaders[dataset] = iter(dataloader)
 
 if debug is True:
     print('Dataloaders:')
     for dataset in dataloaders.keys():
         print(f'{dataset}: {dataloaders[dataset]}')
+
+# init dataloader for label net training
+for component in args.components:
+    if debug:
+        print(f'Component: {component}')
+    weight = training_components[component][1]
+    weighted_components += [component] * weight
+    for dataset in training_components[component][0]:
+        dataset_name = dataset.split('-')[0]
+        dataset_transforms = training_datasets[dataset]  #load the transforms for this dataset
+        loader_bs = max(label_net_bs//len(training_components[component][0]), 1)
+        dataloader = cycle(Dataset(dataset_name, dataset_transforms, True, 'label_net').get_loader(loader_bs))
+        label_net_dataloaders[dataset] = iter(dataloader)
 
 # init dataloaders for SVM training
 for component in args.components:
@@ -156,7 +173,7 @@ if 'mVAE' in args.train_list:
 #train_labels
 if 'label_net' in args.train_list:
     print('Training: label networks')
-    train_labelnet(dataloaders, vae, 25, dimensions[3], dimensions[4], dimensions[5], folder_name, args.components)
+    train_labelnet(label_net_dataloaders, vae, 16, dimensions[3], dimensions[4], dimensions[5], folder_name, args.components)
 
 #train_classifiers
 if 'SVM' in args.train_list:

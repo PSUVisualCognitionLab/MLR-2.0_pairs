@@ -42,7 +42,23 @@ vae_shape_labels.to(device)
 print('checkpoint loaded')
 
 # set seaborn styles
-sns.set_theme(context="paper", style="white")
+sns.set_theme(
+    context="paper",
+    style="white",
+    font_scale=1.8,
+    rc={
+        "lines.linewidth": 2.5,
+        "lines.markersize": 8,
+        "axes.linewidth": 1.5,
+        "xtick.major.width": 1.5,
+        "ytick.major.width": 1.5,
+        "xtick.major.size": 5,
+        "ytick.major.size": 5,
+        "xtick.bottom": True,
+        "ytick.left": True,
+        "font.family": "sans-serif",
+    },
+)
 
 simulation_folder_path = f'simulations/{run_name}/'
 if not os.path.exists('simulations/'):

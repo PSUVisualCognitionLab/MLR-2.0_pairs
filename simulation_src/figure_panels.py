@@ -47,7 +47,6 @@ def generative(vae, shape_label, s_classes, color_label, c_classes, folder_path,
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
 
-    # TODO: implement fig_generative_noise()
     figures.fig_generative_noise(vae, shape_label, s_classes, color_label, c_classes, folder_path, load_data)
 
 @torch.no_grad()
@@ -57,9 +56,9 @@ def synthesis(vae, shape_label, s_classes, shape_classifier, folder_path, load_d
         os.mkdir(folder_path)
 
     # head phones 2 o's plus U, lolipop O + i, ice cream cone V + 1-3 o's
-    #figures.fig_visual_synthesis_umbrella(vae, shape_label, s_classes, shape_classifier, folder_path + "umbrella/", load_data)
+    figures.fig_visual_synthesis_umbrella(vae, shape_label, s_classes, shape_classifier, folder_path + "umbrella/", load_data)
     figures.fig_visual_synthesis_clock(vae, shape_label, s_classes, shape_classifier, folder_path + "clock/", load_data)
-    #figures.fig_visual_synthesis_boat(vae, shape_label, s_classes, shape_classifier, folder_path + "boat/", load_data)
+    figures.fig_visual_synthesis_boat(vae, shape_label, s_classes, shape_classifier, folder_path + "boat/", load_data)
 
 @torch.no_grad()
 def scene(vae, object_label, color_label, object_classifier, color_classifier, folder_path, load_data=False):
