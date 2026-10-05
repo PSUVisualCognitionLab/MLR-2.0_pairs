@@ -2,6 +2,10 @@ import sys
 import time
 import argparse
 
+
+#How to Run this:
+#nohup python Training.py --cuda_device 1 --folder YOURFOLDERNAME --z_dim 16 8 10 --end_ep 6000 --train_retinal_end 0.05 > output1.log 2>&1 &
+
 parser = argparse.ArgumentParser(description="Training of MLR-2.0")
 parser.add_argument("--load_prev", type=bool, default=False, help="Begin training from previous checkpoints, if retraining SVM/label net this must be True")
 parser.add_argument("--cuda", type=bool, default=True, help="Cuda availability")

@@ -84,14 +84,6 @@ def flexibility(vae, folder_path, load_data=False):
 
     figures.fig_encoding_flexibility(vae, folder_path)
 
-@torch.no_grad()
-def holistic(vae, folder_path, load_data=False):
-    folder_path = folder_path + "holistic/"
-    if not os.path.exists(folder_path):
-        os.mkdir(folder_path)
-
-    figures.fig_retinal_mod(vae, folder_path)
-    #pass
 
 @torch.no_grad()
 def poster(vae, folder_path, load_data=False):

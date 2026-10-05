@@ -95,39 +95,3 @@ elif panels:
         else:
             print(f'panel {panel} not recognized')
 
-'''figure_panels.synthesis(vae, vae_shape_labels, s_classes, clf_objectS, simulation_folder_path)
-figure_panels.individuated(vae, simulation_folder_path)  #generating and retrieving specific examples of objects
-figure_panels.interference(vae, simulation_folder_path)
-figure_panels.basic(vae, simulation_folder_path)
-figure_panels.generative(vae, vae_shape_labels, s_classes, vae_color_labels, c_classes, simulation_folder_path)
-figure_panels.addressability(vae, clf_color, simulation_folder_path)
-figure_panels.novel(vae, simulation_folder_path)
-figure_panels.compositional(vae, simulation_folder_path)
-figure_panels.flexibility(vae, simulation_folder_path)
-figure_panels.poster(vae, simulation_folder_path)'''
-
-#synthesis(vae, vae_shape_labels, s_classes, clf_objectS, simulation_folder_path)
-#poster(vae, simulation_folder_path, False)
-#individuated(vae, simulation_folder_path)
-#interference(vae, simulation_folder_path)
-#novel(vae, simulation_folder_path)
-#addressability(vae, clf_color, simulation_folder_path)
-#flexibility(vae, simulation_folder_path)
-'''generative(vae, vae_shape_labels, s_classes, vae_color_labels, c_classes, simulation_folder_path)
-
-synthesis(vae, vae_shape_labels, s_classes, clf_objectS, simulation_folder_path)
-
-'''
-#individuated(vae, simulation_folder_path)  #generating and retrieving specific examples of objects
-
-#interference(vae, simulation_folder_path)
-#basic(vae, simulation_folder_path)
-#generative(vae, vae_shape_labels, s_classes, vae_color_labels, c_classes, simulation_folder_path)
-#addressability(vae, clf_color, simulation_folder_path)
-
-#novel(vae, simulation_folder_path)
-
-#compositional(vae, simulation_folder_path)
-#flexibility(vae, simulation_folder_path)
-
-#novel(vae, simulation_folder_path)

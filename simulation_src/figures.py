@@ -27,6 +27,9 @@ import seaborn as sns
 import joblib
 import inspect
 
+
+from skimage.metrics import structural_similarity as ssim
+
 #internal imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from MLR_src.dataset_builder import Dataset, Colorize_specific
@@ -58,7 +61,7 @@ colorLabel_coeff = 1  #coefficient of the color label
 location_coeff = 0  #coefficient of the color label
 
 bpsize = 10000#00         #size of the binding pool
-token_overlap =0.1
+token_overlap =0.3
 bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
 normalize_fact_familiar=1
@@ -71,12 +74,6 @@ BP_std = 0
 # helper functions:
 def log_function_name():
     return inspect.stack()[1].function
-
-def location_to_onehot(locations):
-    pass
-
-def onehot_to_location(onehots):
-    pass
 
 def sync_devices(tensor_list):
     # uses 0th element device as the target device for all tensors in the list
@@ -142,8 +139,8 @@ def build_single(input_tensor):
 # figures:
 
 def simultaneous_encode(vae: VAE_CNN, data, folder_path, x):
-    bpsize = 6500         #size of the binding pool
-    token_overlap = 0.2
+    bpsize = 10000         #size of the binding pool
+    token_overlap = 0.3
     bpPortion = int(token_overlap *bpsize)
     n = len(data)
     mse_list = []
@@ -165,8 +162,8 @@ def simultaneous_encode(vae: VAE_CNN, data, folder_path, x):
     return 0
 
 def sequential_encode(vae: VAE_CNN, original, frames, folder_path, probe_x, input_x=6):
-    bpsize = 6500         #size of the binding pool
-    token_overlap = 0.2
+    bpsize = 1000         #size of the binding pool
+    token_overlap = 0.3
     bpPortion = int(token_overlap *bpsize)
     # data: N,x,3,28,28  N: batch size, x: frames per item
     n = frames.size(0)
@@ -216,15 +213,14 @@ def fig_simultaneous_vs_sequential_1(vae: VAE_CNN, folder_path: str, load_data: 
     square_data_6 = torch.load(f'{DATASET_ROOT}/color_square_data/original_6_color.pth', 'cuda:1')[:40]
     square_data_6_frames = torch.load(f'{DATASET_ROOT}/color_square_data/original_frames_6_color.pth', 'cuda:1')[:40]
     square_data_6_positions = torch.load(f'{DATASET_ROOT}/color_square_data/positions_6_color.pth', 'cuda:1')[:40]
-    print(square_data_6_positions[0])
-    #print(square_data_3_frames.size()) # N,3,3,28,28
+
 
     mse_data = {}
     # store 6 items simultaneously/sequentially
     mse_data['mse_simultaneous_6'] = simultaneous_encode(vae, square_data_6, folder_path, 6)
-    print(mse_data)
+
     mse_data['mse_sequential_6'] = sequential_encode(vae, square_data_6, square_data_6_frames, folder_path, 6)
-    print(mse_data)
+
     # store 3 items sequentially
     mse_data['mse_simultaneous_3'] = simultaneous_encode(vae, square_data_3, folder_path, 3)
     mse_data['mse_sequential_3'] = sequential_encode(vae, square_data_6, square_data_6_frames, folder_path, 3)
@@ -239,8 +235,8 @@ def fig_simultaneous_vs_sequential_1(vae: VAE_CNN, folder_path: str, load_data: 
 def fig_simultaneous_vs_sequential(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
     vae.eval()
-    bpsize = 13500         #size of the binding pool
-    token_overlap = 0.15
+    bpsize = 10000         #size of the binding pool
+    token_overlap = 0.3
     bpPortion = int(token_overlap *bpsize)
 
 
@@ -458,7 +454,7 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
         retina_size = 100
         imgsize = 28
         bpsize = 10000         #size of the binding pool
-        token_overlap = 0.15
+        token_overlap = 0.3
         bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
         numimg = 7
         n_2 = 1
@@ -466,7 +462,7 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
         #make the data loader
         test_loader_mnist = Dataset('mnist',{'colorize':True}, train=True).get_loader(numimg)
         #test_loader_emnist = Dataset('emnist',{'colorize':True}, train=True).get_loader(numimg)
-        test_loader_emnist = Dataset('emnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[0, 1, 2, 3, 4, 15]}, train=True).get_loader(numimg)
+        test_loader_emnist = Dataset('emnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[10, 11, 12, 13, 14, 15]}, train=True).get_loader(numimg)
         #load in some examples of Bengali Characters
         '''for i in range (1,7):
             color = Colorize_specific(random.randint(0,9))
@@ -484,7 +480,7 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
         sc_4 = []
         l1_4 = []
 
-        for count in range(0,100):
+        for count in range(0,1000):
             data_mnist, labels = next(dataiter_mnist)
             data_emnist, labels = next(dataiter_emnist)
             #data_emnist = imgs # Bengali chars not emnist
@@ -529,12 +525,15 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
             
             recon_sc_2 = vae.decoder_cropped(shape_out_2, color_out_2,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_2, 0))#
             recon_l1_2 = vae.decoder_skip_cropped(0, 0, 0, l1_out_2).cuda()
+            recon_l1_2 = Ft.gaussian_blur(recon_l1_2, kernel_size=[7, 7], sigma=[1.0, 1.0])
 
             recon_sc_4 = vae.decoder_cropped(shape_out_4, color_out_4,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_4, 0))#
             recon_l1_4 = vae.decoder_skip_cropped(0, 0, 0, l1_out_4).cuda()
-            
+            recon_l1_4 = Ft.gaussian_blur(recon_l1_4, kernel_size=[7, 7], sigma=[1.0, 1.0])
+
             corr_sc_2 = compute_correlation(emnist_sample[:n_2], recon_sc_2).item()
             corr_l1_2 = compute_correlation(mnist_sample[:n_2], recon_l1_2).item()
+
 
             corr_sc_4 = compute_correlation(emnist_sample, recon_sc_4).item()
             corr_l1_4 = compute_correlation(mnist_sample, recon_l1_4).item()
@@ -918,7 +917,6 @@ def percept_concept(vae: VAE_CNN, shape_label, s_classes, folder_path: str, load
     vae.eval()
     label = 8 #35
     percept_label = 3 #7
-    print(vals[label])
     data_iter = iter(mnist_loader)
     
     target = 0
@@ -938,7 +936,6 @@ def percept_concept(vae: VAE_CNN, shape_label, s_classes, folder_path: str, load
     z_color_img = activations['color']       
 
     combined_z_shape = (z_shape_labels+z_shape_img)*(1/2)
-    print(combined_z_shape.size())
 
     # pass latents from label network through encoder
     recon_shape_combined = vae.decoder_cropped(combined_z_shape, z_color_img, 0, 0)
@@ -956,8 +953,6 @@ def percept_concept(vae: VAE_CNN, shape_label, s_classes, folder_path: str, load
     save_image(recon_shape_label,f'{folder_path}percept_concept_{label}_label.png')
     save_image(img,f'{folder_path}percept_{target}.png')
 
-    '''    print(pred_ss)
-    print(vals[pred_ss[0].item()])'''
 
 @torch.no_grad()
 def fig_novel_representations(vae: VAE_CNN, folder_path: str, load_data: bool = False):
@@ -970,8 +965,8 @@ def fig_novel_representations(vae: VAE_CNN, folder_path: str, load_data: bool = 
     imgsize = 28
     numimg = 6
     vae.eval()
-    bpsize = 25000#00         #size of the binding pool
-    token_overlap =0.9
+    bpsize = 10000#00         #size of the binding pool
+    token_overlap =0.3
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
     #load in some examples of Bengali Characters
     for i in range (1,numimg+1):
@@ -1018,7 +1013,6 @@ def fig_novel_representations(vae: VAE_CNN, folder_path: str, load_data: bool = 
         BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1, 1,normalize_fact_novel)
         BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1, 1,normalize_fact_novel)
         BP_layerI_out = BP_act_out['l1']
-        #print(BP_layerI_out.size())
 
         BP_layer1_skip = vae.decoder_skip_cropped(0, 0, 0, BP_layerI_out.view(1,-1))
 
@@ -1149,7 +1143,7 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
     obj_1_loader, obj_2_loader, obj_3_loader, bs = dataloaders
     
     for scene_idx in range(n):
-        data_1, labels = next(iter(obj_1_loader))
+        data_1, labels_1 = next(iter(obj_1_loader))
         data_2, labels = next(iter(obj_2_loader))
         data_3, labels = next(iter(obj_3_loader))
 
@@ -1167,7 +1161,10 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         activations_2['theta'] = activations_2_r['theta']
         activations_3['theta'] = activations_3_r['theta']
 
+        
         holistict_activations = vae.activations(holistic_comb_img, False, None, None)
+        l1_activations_1 = vae.activations(data_1[1], False, None, None)
+        l1_act_item1 = l1_activations_1['skip']
 
         obj_1, color_1, theta_1 = activations_1['object'], activations_1['color'], activations_1['theta']
         obj_2, color_2, theta_2 = activations_2['object'], activations_2['color'], activations_2['theta']
@@ -1265,25 +1262,21 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         hybrid_H = composite_scene(holistic_H, obj_recon_H[0], torch.zeros_like(obj_recon_H[0]), device)
         hybrid_1hot_col.append(hybrid_H.view(bs, 3, 64, 64))
 
-        # hybrid holistic bg + 2 object one hots + 1 obj latents:
-        BP_activations_oneHot_H = {'object': [objs[0].view(1, -1), 1],
-                                'color': [colors[0].view(1, -1), 1],
+        # hybrid holistic bg + 2 QuickDraw one-hots + 1 MNIST L1 skip:
+        BP_activations_oneHot_H = {'l1_item': [l1_act_item1.view(1, -1), 1],
                                 'object_1hot': [object_oneHot[1:].view(2, -1), 1],
                                 'color_1hot': [color_oneHot[1:].view(2, -1), 1],
                                 'l1': [holistict_activations['skip'].view(1,-1), 1],
-                                'act_bitmask': [[1, 1, 0, 0, 0], [0, 0, 1, 1,0], [0, 0, 1, 1,0], [0,0,0,0,1]],
-                                'act_name_map': ['object', 'color', 'object_1hot', 'color_1hot', 'l1']}       
+                                'act_bitmask': [[1, 0, 0, 0], [0, 1, 1, 0], [0, 1, 1, 0], [0, 0, 0, 1]],
+                                'act_name_map': ['l1_item', 'object_1hot', 'color_1hot', 'l1']}       
         BPOut, Tokenbindings = BPTokens_storage_bitmask(bpsize, bpPortion, BP_activations_oneHot_H, 4, normalize_fact_novel)
-        #print('here')
         BP_act_out = BPTokens_retrieveByToken_bitmask(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_oneHot_H, 4, normalize_fact_novel)
-        BP_obj_out_hybrid = BP_act_out['object']
-        BP_color_out_hybrid = BP_act_out['color']
+        BP_l1_item = BP_act_out['l1_item']
         BP_obj_out_label = BP_act_out['object_1hot']
         BP_color_out_label = BP_act_out['color_1hot']
         BP_l1_H = BP_act_out['l1']
-        #print(BP_l1_H.shape)
 
-        # remove noise from BP output by converting back to 1-hot
+        # snap the 2 QuickDraw one-hots back to valid classes
         BP_obj_indices = torch.argmax(BP_obj_out_label, dim=-1)
         BP_color_indices = torch.argmax(BP_color_out_label, dim=-1)
         BP_obj_indices = find_closest_index(BP_obj_indices, [0, 2, 8, 10, 11])
@@ -1293,15 +1286,28 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         obj_from_BP_label_H = object_label(BP_obj_out_label, 1)
         color_from_BP_label_H = color_label(BP_color_out_label, 1)
 
-        hybrid_objs = torch.cat([BP_obj_out_hybrid, obj_from_BP_label_H], 0)
-        hybrid_colors = torch.cat([BP_color_out_hybrid, color_from_BP_label_H], 0)
+        # reconstruct QuickDraw objects from one-hot at their retinal positions
+        onehot_recon = vae.decoder_retinal_object(obj_from_BP_label_H, color_from_BP_label_H, thetas[1:], 0).sum(dim=0, keepdim=True)
 
-        obj_recon_H = vae.decoder_retinal_object(hybrid_objs, hybrid_colors, thetas, 0).sum(dim=0, keepdim=True)
+        # reconstruct MNIST item from L1 skip (28x28 crop), place at its retinal position
+        mnist_recon = vae.decoder_skip_cropped(0, 0, 0, BP_l1_item)
+        mnist_retinal = torch.zeros(1, 3, 64, 64).to(device)
+        pad_left = int(labels_1[2].item() - 14)
+        pad_top = int(labels_1[3].item() - 14)
+        pad_left = max(0, min(pad_left, 36))  # clamp to valid range (64-28=36)
+        pad_top = max(0, min(pad_top, 36))
+        mnist_retinal[:, :, pad_top:pad_top+28, pad_left:pad_left+28] = mnist_recon
+
+        # holistic background
         holistic_H = vae.decoder_skip_cropped(0, 0, 0, BP_l1_H)
-        holistic_H = F.interpolate(holistic_H.view(1,3,28,28), size=(64, 64), mode='bilinear', align_corners=False)
+        holistic_H = F.interpolate(holistic_H.view(1, 3, 28, 28), size=(64, 64), mode='bilinear', align_corners=False)
         holistic_H = Ft.gaussian_blur(holistic_H, kernel_size=[79, 79], sigma=[5.5, 5.5])
-        hybrid_H = composite_scene(holistic_H, obj_recon_H[0], torch.zeros_like(obj_recon_H[0]), device)
+
+        # composite: holistic bg → MNIST L1 → QuickDraw one-hot objects on top
+        hybrid_H = composite_scene(holistic_H, mnist_retinal[0], torch.zeros_like(mnist_retinal[0]), device)
+        hybrid_H = composite_scene(hybrid_H, onehot_recon[0], torch.zeros_like(onehot_recon[0]), device)
         hybrid_bitmask_col.append(hybrid_H.view(bs, 3, 64, 64))
+
 
         # reconstruct
         obj_recon_no_BP = vae.decoder_retinal_object(objs, colors, thetas, 0).sum(dim=0, keepdim=True)
@@ -1310,8 +1316,13 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         obj_recon_label = vae.decoder_retinal_object(obj_from_label, color_from_label, thetas, 0).sum(dim=0, keepdim=True)
         holistic_BP = vae.decoder_skip_cropped(0, 0, 0, BP_l1_out)
         holistic_no_BP = vae.decoder_skip_cropped(0, 0, 0, holistict_activations['skip'])
+
+        #holistic_BP = Ft.gaussian_blur(holistic_BP, kernel_size=[3, 3], sigma=[1, 1])
+        #holistic_no_BP = Ft.gaussian_blur(holistic_no_BP, kernel_size=[3, 3], sigma=[1, 1])
+
         holistic_BP = F.interpolate(holistic_BP, size=(64, 64), mode='bilinear', align_corners=False)
         holistic_no_BP = F.interpolate(holistic_no_BP, size=(64, 64), mode='bilinear', align_corners=False)
+
 
         comb_img_col.append(comb_img.view(bs, 3, 64, 64))
         obj_recon_no_BP_col.append(obj_recon_no_BP.view(bs, 3, 64, 64))
@@ -1322,28 +1333,130 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         holistic_BP_col.append(holistic_BP.view(bs, 3, 64, 64))
 
     if save_img:
-        save_image(
-            torch.cat([torch.cat(comb_img_col, 0), torch.cat(obj_recon_no_BP_col, 0),
-            torch.cat(obj_recon_BP_col, 0), torch.cat(obj_recon_label_col, 0),
-            torch.cat(obj_recon_BP_label_col, 0), torch.cat(holistic_no_BP_col, 0),
-            torch.cat(holistic_BP_col, 0), torch.cat(hybrid_col, 0), torch.cat(hybrid_1hot_col, 0), torch.cat(hybrid_bitmask_col, 0)], 0),
-            f'{folder_path}figure_obj_scene_{scene_idx}.png', pad_value=0.6,
-            nrow=n, normalize=False)
+            from torchvision.utils import make_grid
+            
+            row_labels = [
+                'Original scene',
+                'Object latents (no BP)',
+                'Object latents (BP)',
+                'Object from labels (no BP)',
+                'Object from labels (BP)',
+                'Holistic L1 (no BP)',
+                'Holistic L1 (BP)',
+                'Hybrid: latent obj + hol bg',
+                'Hybrid: 1-hot obj + hol bg',
+                'Hybrid: bitmask obj + hol bg',
+            ]
+            
+            rows = [torch.cat(comb_img_col, 0), torch.cat(obj_recon_no_BP_col, 0),
+                    torch.cat(obj_recon_BP_col, 0), torch.cat(obj_recon_label_col, 0),
+                    torch.cat(obj_recon_BP_label_col, 0), torch.cat(holistic_no_BP_col, 0),
+                    torch.cat(holistic_BP_col, 0), torch.cat(hybrid_col, 0),
+                    torch.cat(hybrid_1hot_col, 0), torch.cat(hybrid_bitmask_col, 0)]
+            
+            grid = make_grid(torch.cat(rows, 0), nrow=n, normalize=False, pad_value=0.6)
+            grid_img = convert_image(grid.cpu())
+            
+            label_width = 200
+            new_width = label_width + grid_img.width
+            labeled_img = Image.new('RGB', (new_width, grid_img.height), (153, 153, 153))
+            labeled_img.paste(grid_img, (label_width, 0))
+            
+            draw = ImageDraw.Draw(labeled_img)
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+            except:
+                font = ImageFont.load_default()
+            
+            row_height = grid_img.height / len(row_labels)
+            for i, label in enumerate(row_labels):
+                y = int(i * row_height + row_height / 2 - 7)
+                draw.text((5, y), label, fill=(0, 0, 0), font=font)
+            
+            labeled_img.save(f'{folder_path}figure_obj_scene_{scene_idx}.png')
+
 
     if return_loss:
+        orig = torch.cat(comb_img_col, 0)
+        brightness = orig.max(dim=1, keepdim=True).values
+        fg_mask = (brightness > 0.01).float()
+
+        #losses = {
+        #    'holistic_no_BP': foreground_ssim(torch.cat(holistic_no_BP_col, 0), orig, fg_mask),
+        #    'holistic_BP': foreground_ssim(torch.cat(holistic_BP_col, 0), orig, fg_mask),
+        #    'latent_obj_holistic_bg': foreground_ssim(torch.cat(hybrid_col, 0), orig, fg_mask),
+        #    '1hot_obj_holistic_bg': foreground_ssim(torch.cat(hybrid_1hot_col, 0), orig, fg_mask),
+        #    'hybrid_obj': foreground_ssim(torch.cat(hybrid_bitmask_col, 0), orig, fg_mask)}
+        #return losses
+
         losses = {
-            'holistic_no_BP': F.mse_loss(torch.cat(comb_img_col, 0), torch.cat(holistic_no_BP_col, 0)).item(),
-            'holistic_BP': F.mse_loss(torch.cat(comb_img_col, 0), torch.cat(holistic_BP_col, 0)).item(),
-            'latent_obj_holistic_bg': F.mse_loss(torch.cat(comb_img_col, 0), torch.cat(hybrid_col, 0)).item(),
-            '1hot_obj_holistic_bg': F.mse_loss(torch.cat(comb_img_col, 0), torch.cat(hybrid_1hot_col, 0)).item(),
-            'hybrid_obj': F.mse_loss(torch.cat(comb_img_col, 0), torch.cat(hybrid_bitmask_col, 0)).item()}
+            'holistic_no_BP': batch_ssim(torch.cat(holistic_no_BP_col, 0),orig),
+            'holistic_BP': batch_ssim(torch.cat(holistic_BP_col, 0),orig),
+            'latent_obj_holistic_bg': batch_ssim(torch.cat(hybrid_col, 0),orig),
+            '1hot_obj_holistic_bg': batch_ssim(torch.cat(hybrid_1hot_col, 0),orig),
+            'hybrid_obj': batch_ssim(torch.cat(hybrid_bitmask_col, 0),orig)}
         return losses
+
+def batch_ssim(pred, target, data_range=1.0):
+    p = pred.detach().cpu().numpy().transpose(0, 2, 3, 1)
+    t = target.detach().cpu().numpy().transpose(0, 2, 3, 1)
+    scores = [ssim(t[i], p[i], data_range=data_range, channel_axis=-1)
+              for i in range(p.shape[0])]
+    return sum(scores) / len(scores)
+
+
+# THIS CUSTOM SSIM IS DEPRECATED, NOW USING SCIKIT VERSION
+def foreground_ssim(pred, target, fg_mask, window_size=7, fg_weight=5.0):
+    # Compute SSIM weighted toward foreground pixels. Higher = better match.
+    # Returns 1 - SSIM so it can be used as a loss (lower = better).
+    C1 = 0.01 ** 2
+    C2 = 0.03 ** 2
+    pad = window_size // 2
+
+    # per-channel, then average
+    channels = pred.size(1)
+    ssim_val = 0.0
+
+    for c in range(channels):
+        p = pred[:, c:c+1]
+        t = target[:, c:c+1]
+        w = fg_mask[:, 0:1]  # single-channel mask
+        #bg = 1.0 - fg_mask[:, 0:1]
+        #w = bg + fg_mask[:, 0:1] * fg_weight
+
+        pw = p * w
+        tw = t * w
+
+        mu_p = F.avg_pool2d(pw, window_size, stride=1, padding=pad)
+        mu_t = F.avg_pool2d(tw, window_size, stride=1, padding=pad)
+        count = F.avg_pool2d(w, window_size, stride=1, padding=pad).clamp(min=1e-6)
+
+        # correct for masked averaging
+        mu_p = mu_p / count
+        mu_t = mu_t / count
+
+        sigma_p2 = F.avg_pool2d(pw * p, window_size, stride=1, padding=pad) / count - mu_p ** 2
+        sigma_t2 = F.avg_pool2d(tw * t, window_size, stride=1, padding=pad) / count - mu_t ** 2
+        sigma_pt = F.avg_pool2d(pw * t, window_size, stride=1, padding=pad) / count - mu_p * mu_t
+
+        sigma_p2 = sigma_p2.clamp(min=0)
+        sigma_t2 = sigma_t2.clamp(min=0)
+
+        num = (2 * mu_p * mu_t + C1) * (2 * sigma_pt + C2)
+        den = (mu_p ** 2 + mu_t ** 2 + C1) * (sigma_p2 + sigma_t2 + C2)
+
+        ssim_map = (num / den) * w
+        ssim_val += ssim_map.sum() / w.sum().clamp(min=1)
+
+    ssim_val = ssim_val / channels
+    return (1.0 - ssim_val).item()
+
 
 @torch.no_grad()
 def fig_obj_scene_recon(vae: VAE_CNN, object_label, color_label, object_classifier, color_classifier, folder_path: str, load_data: bool = False):
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
     vae.eval()
-    bpsize = 5000#00         #size of the binding pool
+    bpsize = 10000#00         #size of the binding pool
     token_overlap =0.3
     n = 7
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
@@ -1354,9 +1467,9 @@ def fig_obj_scene_recon(vae: VAE_CNN, object_label, color_label, object_classifi
     # holistic rep for background, lowpass filter average, latent representation for objects, reconstruct and layer
     # MSE for each reconstruction row over 1000 trials.
     quickdraw_target_set = [0, 2, 8, 10, 11]
-    obj_1_transforms = {'retina': True, 'colorize': True, 'scale': False, 'target_set': quickdraw_target_set,
-                        'location_targets': {(-1, -1): list(range(0, s_classes + 1))}, 'colorize_background':'split'}
-    obj_1_loader = Dataset('quickdraw', obj_1_transforms).get_loader(bs)
+    #obj_1_transforms = {'retina': True, 'colorize': True, 'scale': False, 'target_set': quickdraw_target_set,
+    #                    'location_targets': {(-1, -1): list(range(0, s_classes + 1))}, 'colorize_background':'split'}
+    #obj_1_loader = Dataset('quickdraw', obj_1_transforms).get_loader(bs)
 
     obj_2_transforms = {'retina': True, 'colorize': True, 'scale': False, 'target_set': quickdraw_target_set,
                         'location_targets': {(-1, 1): list(range(0, s_classes + 1))}}
@@ -1366,12 +1479,20 @@ def fig_obj_scene_recon(vae: VAE_CNN, object_label, color_label, object_classifi
                         'location_targets': {(1, 1): list(range(0, s_classes + 1))}}
     obj_3_loader = Dataset('quickdraw', obj_3_transforms).get_loader(bs)
 
+    #novel stimulus
+    obj_1_transforms = {'retina': True, 'colorize': True, 'scale': False, 'target_set': [3],
+                        'location_targets': {(-1, -1): list(range(0, 10))}, 'colorize_background':'split'}
+    obj_1_loader = Dataset('mnist', obj_1_transforms).get_loader(bs)
+
+
+
     dataloaders = (obj_1_loader, obj_2_loader, obj_3_loader, bs)
 
     losses_junk = obj_scene_helper(vae, dataloaders, n, save_img=True, return_loss=True, bpsize=bpsize, bpPortion=bpPortion, object_label=object_label, color_label=color_label, object_classifier=object_classifier, color_classifier=color_classifier, folder_path=folder_path)
     loss_trials = 200
     losses_dict = {}
-    for bpsize in [10000, 7000, 5000, 4000, 3000, 1000, 500]:
+#    for bpsize in [15000, 10000, 7000, 5000, 4000, 3000, 1000, 500]:
+    for bpsize in [10000]:
         losses_dict[bpsize] = obj_scene_helper(vae, dataloaders, loss_trials, save_img=False, return_loss=True, bpsize=bpsize, bpPortion=bpPortion, object_label=object_label, color_label=color_label, object_classifier=object_classifier, color_classifier=color_classifier, folder_path=folder_path)
 
     # TODO: new hybrid strat: present an atypical obj on bottom, store top 2 as labels, bottom as latents, w/ hol bg
@@ -1428,6 +1549,7 @@ def visual_synthesis_helper(vae: VAE_CNN, num1, num2, theta, bs, shape_label: VA
         save_image(activations['stn_out'], f'{folder_path}stn_out.png')
 
     return out_pred
+
 
 @torch.no_grad()
 def fig_visual_synthesis_umbrella(vae: VAE_CNN, shape_label, s_classes, object_classifier, folder_path: str, load_data: bool = False):
@@ -1682,7 +1804,7 @@ def functionality_test(vae: VAE_CNN, shape_label, s_classes, color_label, c_clas
                        shape.view(sample_size, 3, imgsize, imgsize)[:25], color.view(sample_size, 3, imgsize, imgsize)[:25], target.view(sample_size, 3, imgsize, imgsize)[:25]], 0)
      
     rows = 6;    
-    #print(sample_size)
+
     #this next bit collapses the long image into a stack of rows so that the text can be added
     #convert the sample_size*rows x 3 x 28 x 28 tensor into a  stack that is now 3 x rows*28 x sample_size*28
     output_img2 = output_img.view(rows,sample_size,3,28,28)
@@ -1717,7 +1839,6 @@ def fig_generative_noise(vae: VAE_CNN, shape_label, s_classes, color_label, c_cl
         shape_label.to(device)
         num_labels = F.one_hot(torch.tensor([num1, num2]).to(device), num_classes=s_classes).float().to(device) # shape
         col_labels = F.one_hot(torch.tensor([1, 0]).to(device), num_classes=c_classes).float().to(device) # color
-        print(num_labels.size())
         z_shapes = shape_label(num_labels, 1)
         z_colors = color_label(col_labels, 1)
 
@@ -1760,8 +1881,50 @@ def fig_generative_noise(vae: VAE_CNN, shape_label, s_classes, color_label, c_cl
     
     save_image(recon_grid, f'{folder_path}sample.png', pad_value=0.6)
 
-def binding_trial(trial_name: str, dataset, vae: VAE_CNN, color_classifier, numimg, folder_path: str):
+
+@torch.no_grad()
+def fig_binding_addressability(vae: VAE_CNN, color_classifier, folder_path: str, load_data: bool = False):
+    pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
+    vae.eval()
+    if load_data is False:
+        print("addressability figure")
+        # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that shape as a cue
+        
+        numimg = 2
+        dataset = Dataset('emnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True}, train=False)  #two random items
+        dataset_2 = Dataset('emnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[10]}, train=False)  # always store/retrieve just the same type of letter
+
+        #now run a batch of trials for each of the two conditions:
+        #compute how often the correct token & color is retrieved  
+        #return the last trial as a visual example for the figure 
+        
+        fig_data_list_r = store_retrieve2('emnist_rand', dataset, vae, color_classifier, numimg, folder_path)  #two random ones
+        fig_data_list_2 = store_retrieve2('emnist_2', dataset_2, vae, color_classifier, numimg, folder_path)   #always the same letter 
     
+        data_to_pickle = {
+            "fig_data_list_r": fig_data_list_r,
+            "fig_data_list_2": fig_data_list_2
+        }
+
+        joblib.dump(data_to_pickle, pkl_path)
+
+    else:
+        if not os.path.exists(pkl_path):
+            raise Exception(f"No data exists for plot: {folder_path}{log_function_name()}")
+        
+        # load plotting data
+        loaded_data = joblib.load(pkl_path)
+        fig_data_list_r = loaded_data["fig_data_list_r"]
+        fig_data_list_2 = loaded_data["fig_data_list_2"]
+
+    save_image(torch.cat(fig_data_list_r, 0), f'{folder_path}mnist_rand-addressability.png',
+                nrow=numimg, normalize=False, pad_value=0.6)
+
+    save_image(torch.cat(fig_data_list_2, 0), f'{folder_path}mnist_2-addressability.png',
+            nrow=numimg, normalize=False, pad_value=0.6)
+
+def store_retrieve2(trial_name: str, dataset, vae: VAE_CNN, color_classifier, numimg, folder_path: str):
+    #stores two items in memory with different colors and then retrieves based on the shape 
     token_overlap = 0.3
     bpPortion = int(token_overlap *bpsize)
 
@@ -1819,9 +1982,9 @@ def binding_trial(trial_name: str, dataset, vae: VAE_CNN, color_classifier, numi
         BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
         
         #cued_prediction = shape_classifier.predict(BP_act_out_cued['shape'][0].view(1,-1).cpu())
-        #print(targets[0], cued_prediction)
+
         cued_color_prediction = color_classifier.predict(BP_act_out_cued['color'][maxtoken].view(1,-1).cpu())
-        #print(cued_color_prediction, targets[1][0])
+
         if cued_color_prediction == targets[1][0].item():
             out_predictions += 1
         if maxtoken == 0:
@@ -1854,43 +2017,7 @@ def binding_trial(trial_name: str, dataset, vae: VAE_CNN, color_classifier, numi
     
     return fig_data_list
 
-@torch.no_grad()
-def fig_binding_addressability(vae: VAE_CNN, color_classifier, folder_path: str, load_data: bool = False):
-    pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
-    vae.eval()
-    if load_data is False:
-        print("addressability figure")
-        # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that as a cue
-        
-        numimg = 2
 
-        dataset = Dataset('emnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True}, train=False)
-        dataset_2 = Dataset('emnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[10]}, train=False)
-        # these functions  actually do the work
-        fig_data_list_r = binding_trial('emnist_rand', dataset, vae, color_classifier, numimg, folder_path)
-        fig_data_list_2 = binding_trial('emnist_2', dataset_2, vae, color_classifier, numimg, folder_path)
-    
-        data_to_pickle = {
-            "fig_data_list_r": fig_data_list_r,
-            "fig_data_list_2": fig_data_list_2
-        }
-
-        joblib.dump(data_to_pickle, pkl_path)
-
-    else:
-        if not os.path.exists(pkl_path):
-            raise Exception(f"No data exists for plot: {folder_path}{log_function_name()}")
-        
-        # load plotting data
-        loaded_data = joblib.load(pkl_path)
-        fig_data_list_r = loaded_data["fig_data_list_r"]
-        fig_data_list_2 = loaded_data["fig_data_list_2"]
-
-    save_image(torch.cat(fig_data_list_r, 0), f'{folder_path}mnist_rand-addressability.png',
-                nrow=numimg, normalize=False, pad_value=0.6)
-
-    save_image(torch.cat(fig_data_list_2, 0), f'{folder_path}mnist_2-addressability.png',
-            nrow=numimg, normalize=False, pad_value=0.6)
 
 def sample_points(n, m, k=5, min_dist=5):
     points = []
@@ -1923,7 +2050,7 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
     correct_token_chosen_err = []
     token_swap = 0
     swap_count = 0
-    trial_count = 10
+    trial_count = 1000
     for _ in range(trial_count):
         crop_imgs = next(dataiter)[0].cuda()
 
@@ -1993,7 +2120,6 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
         shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
         shape_out_BP_cued, color_out_BP_cued = BP_act_out_cued['shape'], BP_act_out_cued['color']
         
-        print(color_out_BP_cued.size())
         errors = []
         for i in range(numimg):
             errors += [torch.norm(color_act[i]-color_out_BP_cued[0]).item()]
@@ -2032,10 +2158,9 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     
     if load_data is False:
         vae.eval()
-        print("addressability figure")
         # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that as a cue
 
-        bpsize = 25000        #size of the binding pool
+        bpsize = 10000        #size of the binding pool
         token_overlap =0.3
         bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
@@ -2107,7 +2232,7 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str, load_data: bool = F
 
     numimg = 2
 
-    bpsize = 25000#00         #size of the binding pool
+    bpsize = 10000#00         #size of the binding pool
     token_overlap =0.35
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
     targetset = list(range(0, 4))
