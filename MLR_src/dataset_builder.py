@@ -803,7 +803,7 @@ class Dataset(data.Dataset):
             #lambda img: torch_transforms.functional.hflip(img)]), download=True)
 
         elif dataset == 'fashion_mnist':
-            base_dataset = datasets.FashionMNIST(f'{DATASET_ROOT}fashionmnist_data/', train=train, transform = None, download=False)
+            base_dataset = datasets.FashionMNIST(f'{DATASET_ROOT}fashionmnist_data/', train=train, transform = None, download=True)
 
         elif dataset == 'cifar10':
             base_dataset = datasets.CIFAR10(root=DATASET_ROOT, train=train, download=False, transform=None)
