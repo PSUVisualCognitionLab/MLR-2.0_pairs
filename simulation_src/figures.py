@@ -65,7 +65,7 @@ token_overlap =0.3
 bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
 normalize_fact_familiar=1
-normalize_fact_novel=1
+normalize_factor=1
 
 
 imgsize = 28
@@ -151,8 +151,8 @@ def simultaneous_encode(vae: VAE_CNN, data, folder_path, x):
         BP_activations = {'l1': [activations['skip'].view(1,-1), 1]}
 
         # store and retrieve
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations, 1,normalize_fact_novel)
-        BP_activations_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations, 1,normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations, 1,normalize_factor)
+        BP_activations_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations, 1,normalize_factor)
         l1_out = BP_activations_out['l1']
 
         recon = vae.decoder_skip_cropped(0, 0, 0, l1_out.view(1,-1))
@@ -177,8 +177,8 @@ def sequential_encode(vae: VAE_CNN, original, frames, folder_path, probe_x, inpu
         BP_activations = {'shape': [activations['shape'].view(probe_x,-1), 1], 'color': [activations['color'].view(probe_x,-1), 1], } # 2 familiar in shape/color
 
         # store and retrieve
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations, probe_x,normalize_fact_novel)
-        BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations, probe_x,normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations, probe_x,normalize_factor)
+        BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations, probe_x,normalize_factor)
         shape_out, color_out = BP_activations_out['shape'], BP_activations_out['color']        
         pre_retinal_frames = vae.decoder_cropped(activations['shape'].view(probe_x,-1), activations['color'].view(probe_x,-1),0,0)
 
@@ -293,8 +293,8 @@ def fig_simultaneous_vs_sequential(vae: VAE_CNN, folder_path: str, load_data: bo
         for i in range(len(data)):
             act = vae.activations(data[i].view(-1, 3, 28, 28), False)
             BP_act = {'l1': [act['skip'].view(1, -1), 1]}
-            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_act, 1, normalize_fact_novel)
-            BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_act, 1, normalize_fact_novel)
+            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_act, 1, normalize_factor)
+            BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_act, 1, normalize_factor)
             recon = vae.decoder_skip_cropped(0, 0, 0, BP_act_out['l1'].view(1, -1))
             recon_list.append(recon.squeeze(0))
             probe = build_single(frames[i][:probe_x].view(1, probe_x, 3, 28, 28)).squeeze(0)
@@ -322,7 +322,7 @@ def fig_simultaneous_vs_sequential(vae: VAE_CNN, folder_path: str, load_data: bo
                 'color': [act['color'].view(input_x, -1), 1],
             }
             BPOut, Tokenbindings = BPTokens_storage(
-                bpsize, bpPortion, BP_act, input_x, normalize_fact_novel
+                bpsize, bpPortion, BP_act, input_x, normalize_factor
             )
             
             # retrieve only probe_x items
@@ -331,7 +331,7 @@ def fig_simultaneous_vs_sequential(vae: VAE_CNN, folder_path: str, load_data: bo
                 'color': [act['color'].view(input_x, -1)[:min(probe_x, input_x)], 1],
             }
             BP_act_out = BPTokens_retrieveByToken(
-                bpsize, bpPortion, BPOut, Tokenbindings, BP_act_probe, min(probe_x, input_x), normalize_fact_novel
+                bpsize, bpPortion, BPOut, Tokenbindings, BP_act_probe, min(probe_x, input_x), normalize_factor
             )
             
             shape_out, color_out = BP_act_out['shape'], BP_act_out['color']
@@ -446,6 +446,10 @@ def fig_simultaneous_vs_sequential(vae: VAE_CNN, folder_path: str, load_data: bo
 
 @torch.no_grad()
 def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
+    #used in the interference panel
+        #demonstrates that the same stimulus when reconstructed through L1 accumulates interference more quickly..
+            #Except it's not working
+
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
     vae.eval()
 
@@ -453,16 +457,17 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
         print('generating Figure efficient reconstruction plot')
         retina_size = 100
         imgsize = 28
-        bpsize = 10000         #size of the binding pool
-        token_overlap = 0.3
+        bpsize = 5000         #size of the binding pool
+        #token_overlap = 0.3
         bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
         numimg = 7
-        n_2 = 1
-        n_4 = 4
+        ss1 = 1
+        ss4 = 4
         #make the data loader
         test_loader_mnist = Dataset('mnist',{'colorize':True}, train=True).get_loader(numimg)
-        #test_loader_emnist = Dataset('emnist',{'colorize':True}, train=True).get_loader(numimg)
         test_loader_emnist = Dataset('emnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[10, 11, 12, 13, 14, 15]}, train=True).get_loader(numimg)
+
+
         #load in some examples of Bengali Characters
         '''for i in range (1,7):
             color = Colorize_specific(random.randint(0,9))
@@ -475,96 +480,103 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
 
         dataiter_mnist = iter(test_loader_mnist)
         dataiter_emnist = iter(test_loader_emnist)
-        sc_2 = []
-        l1_2 = []
-        sc_4 = []
-        l1_4 = []
+        fam_1 = []
+        nov_1 = []
+        fam_4 = []
+        nov_4 = []
 
         for count in range(0,1000):
             data_mnist, labels = next(dataiter_mnist)
             data_emnist, labels = next(dataiter_emnist)
             #data_emnist = imgs # Bengali chars not emnist
             
-            mnist_sample = data_mnist[:n_4].cuda()
-            emnist_sample = data_emnist[:n_4].cuda()
+            mnist_sample = data_mnist[:ss4].cuda()
+            emnist_sample = data_emnist[:ss4].cuda()
             
             #push the images through the model
-            mnist_act = vae.activations(mnist_sample.view(-1,3,28,28), False)
+            mnist_act = vae.activations(emnist_sample.view(-1,3,28,28), False)
             emnist_act = vae.activations(emnist_sample.view(-1,3,28,28), False)
             
             emnist_shape_act = emnist_act['shape']
             emnist_color_act = emnist_act['color']
 
+            mnist_shape_act = mnist_act['shape']
+            mnist_color_act = mnist_act['color']
             mnist_l1_act = mnist_act['skip']
 
-            BP_activations_sc_2 = {'shape': [emnist_shape_act[:n_2].view(n_2,-1), 1], 'color': [emnist_color_act[:n_2].view(n_2,-1), 1]} # 2 familiar in shape/color
-            BP_activations_l1_2 = {'l1': [mnist_l1_act[:n_2].view(n_2,-1), 1]} # 2 novel in L1
 
-            BP_activations_sc_4 = {'shape': [emnist_shape_act.view(n_4,-1), 1], 'color': [emnist_color_act.view(n_4,-1), 1]} # 4 familiar in shape/color
-            BP_activations_l1_4 = {'l1': [mnist_l1_act.view(n_4,-1), 1]} # 4 novel in L1
+            BP_activations_fam_1 = {'shape': [emnist_shape_act[:ss1].view(ss1,-1), 1], 'color': [emnist_color_act[:ss1].view(ss1,-1), 1]} # 2 familiar in shape/color
+            BP_activations_nov_1_sc = {'shape': [mnist_shape_act[:ss1].view(ss1,-1), 1], 'color': [mnist_color_act[:ss1].view(ss1,-1), 1]} # 2 familiar in shape/color
+            BP_activations_nov_1 = {'l1': [mnist_l1_act[:ss1].view(ss1,-1), 1]} # 2 novel in L1
 
-            # store and retrieve 2 familiar s/c maps
-            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc_2, n_2,normalize_fact_novel)
-            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc_2, n_2,normalize_fact_novel)
-            shape_out_2, color_out_2 = BP_activations_out['shape'], BP_activations_out['color']
+            BP_activations_fam_4 = {'shape': [emnist_shape_act.view(ss4,-1), 1], 'color': [emnist_color_act.view(ss4,-1), 1]} # 4 familiar in shape/color
+            BP_activations_nov_4_sc = {'shape': [mnist_shape_act.view(ss4,-1), 1], 'color': [mnist_color_act.view(ss4,-1), 1]} # 4 familiar in shape/color
+            BP_activations_nov_4 = {'l1': [mnist_l1_act.view(ss4,-1), 1]} # 4 novel in L1
 
-            # store and retrieve 2 novel l1 act
-            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1_2, n_2,normalize_fact_novel)
-            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1_2, n_2,normalize_fact_novel)
-            l1_out_2 = BP_activations_out['l1']
+            # store and retrieve 1 familiar s/c maps
+            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_fam_1, ss1,normalize_factor)
+            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_fam_1, ss1,normalize_factor)
+            shape_out_1, color_out_1 = BP_activations_out['shape'], BP_activations_out['color']
+
+            # store and retrieve 1 familiar l1 act
+            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_nov_1, ss1,normalize_factor)
+            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_nov_1, ss1,normalize_factor)
+            l1_out_1 = BP_activations_out['l1']
 
             # store and retrieve 4 familiar s/c maps
-            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc_4, n_4,normalize_fact_novel)
-            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc_4, n_4,normalize_fact_novel)
+            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_fam_4, ss4,normalize_factor)
+            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_fam_4, ss4,normalize_factor)
             shape_out_4, color_out_4 = BP_activations_out['shape'], BP_activations_out['color']
 
-            # store and retrieve 4 novel l1 act
-            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1_4, n_4,normalize_fact_novel)
-            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1_4, n_4,normalize_fact_novel)
+            # store and retrieve 4 familiar l1 act
+            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_nov_4, ss4,normalize_factor)
+            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_nov_4, ss4,normalize_factor)
             l1_out_4 = BP_activations_out['l1']
-            
-            recon_sc_2 = vae.decoder_cropped(shape_out_2, color_out_2,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_2, 0))#
-            recon_l1_2 = vae.decoder_skip_cropped(0, 0, 0, l1_out_2).cuda()
-            recon_l1_2 = Ft.gaussian_blur(recon_l1_2, kernel_size=[7, 7], sigma=[1.0, 1.0])
 
-            recon_sc_4 = vae.decoder_cropped(shape_out_4, color_out_4,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_4, 0))#
-            recon_l1_4 = vae.decoder_skip_cropped(0, 0, 0, l1_out_4).cuda()
-            recon_l1_4 = Ft.gaussian_blur(recon_l1_4, kernel_size=[7, 7], sigma=[1.0, 1.0])
+    
+            recon_fam_1 = vae.decoder_cropped(shape_out_1, color_out_1,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_1, 0))#
+            #recon_nov_1 = vae.decoder_cropped(shape_out_novel_1, color_out_novel_1,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_1, 0))#
+            recon_nov_1 = vae.decoder_skip_cropped(0, 0, 0, l1_out_1).cuda()
+            recon_nov_1 = Ft.gaussian_blur(recon_nov_1, kernel_size=[3, 3], sigma=[1.0, 1.0])
 
-            corr_sc_2 = compute_correlation(emnist_sample[:n_2], recon_sc_2).item()
-            corr_l1_2 = compute_correlation(mnist_sample[:n_2], recon_l1_2).item()
+            recon_fam_4 = vae.decoder_cropped(shape_out_4, color_out_4,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_4, 0))#
+            #recon_nov_4 = vae.decoder_cropped(shape_out_novel_4, color_out_novel_4,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_4, 0))#
+            recon_nov_4 = vae.decoder_skip_cropped(0, 0, 0, l1_out_4).cuda()
+            recon_nov_4 = Ft.gaussian_blur(recon_nov_4, kernel_size=[3, 3], sigma=[1.0, 1.0])
 
+            corr_fam_1 = compute_correlation(emnist_sample[:ss1], recon_fam_1).item()
+            corr_nov_1 = compute_correlation(emnist_sample[:ss1], recon_nov_1).item()
 
-            corr_sc_4 = compute_correlation(emnist_sample, recon_sc_4).item()
-            corr_l1_4 = compute_correlation(mnist_sample, recon_l1_4).item()
+            corr_fam_4 = compute_correlation(emnist_sample, recon_fam_4).item()
+            corr_nov_4 = compute_correlation(emnist_sample, recon_nov_4).item()
 
-            sc_2 += [corr_sc_2]
-            l1_2 += [corr_l1_2]
+            fam_1 += [corr_fam_1]
+            nov_1 += [corr_nov_1]
 
-            sc_4 += [corr_sc_4]
-            l1_4 += [corr_l1_4]
+            fam_4 += [corr_fam_4]
+            nov_4 += [corr_nov_4]
 
-        corr_sc_2 = sum(sc_2)/len(sc_2)
-        corr_l1_2 = sum(l1_2)/len(l1_2)
+        corr_fam_1 = sum(fam_1)/len(fam_1)
+        corr_nov_1 = sum(nov_1)/len(nov_1)
 
-        corr_sc_4 = sum(sc_4)/len(sc_4)
-        corr_l1_4 = sum(l1_4)/len(l1_4)
+        corr_fam_4 = sum(fam_4)/len(fam_4)
+        corr_nov_4 = sum(nov_4)/len(nov_4)
 
-        print(corr_l1_2, corr_l1_4)
-        print(corr_sc_2, corr_sc_4)
+        print(corr_nov_1, corr_nov_4)
+        print(corr_fam_1, corr_fam_4)
 
         e = torch.zeros((1,3,28,28)).cuda()
-        fig_data = [mnist_sample, torch.cat([recon_sc_2, e, e, e], 0), recon_sc_4, emnist_sample,
-                   torch.cat([recon_l1_2, e, e, e], 0), recon_l1_4,]
+        fig_data = [mnist_sample, torch.cat([recon_nov_1, e, e, e], 0), recon_nov_4, emnist_sample,
+                   torch.cat([recon_fam_1, e, e, e], 0), recon_fam_4,]
 
         data_to_pickle = {
             "fig_data": fig_data,
-            "n_2": n_2,
-            "n_4": n_4,
-            "corr_l1_2": corr_l1_2,
-            "corr_l1_4": corr_l1_4,
-            "corr_sc_2": corr_sc_2,
-            "corr_sc_4": corr_sc_4,
+            "ss1": ss1,
+            "ss4": ss4,
+            "corr_nov_1": corr_nov_1,
+            "corr_nov_4": corr_nov_4,
+            "corr_fam_1": corr_fam_1,
+            "corr_fam_4": corr_fam_4,
         }
 
         joblib.dump(data_to_pickle, pkl_path)
@@ -575,29 +587,29 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
         
         # load plotting data
         loaded_data = joblib.load(pkl_path)
-        n_2 = loaded_data["n_2"]
-        n_4 = loaded_data["n_4"]
-        corr_l1_2 = loaded_data["corr_l1_2"]
-        corr_l1_4 = loaded_data["corr_l1_4"]
-        corr_sc_2 = loaded_data["corr_sc_2"]
-        corr_sc_4 = loaded_data["corr_sc_4"]
+        ss1 = loaded_data["ss1"]
+        ss4 = loaded_data["ss4"]
+        corr_nov_1 = loaded_data["corr_nov_1"]
+        corr_nov_4 = loaded_data["corr_nov_4"]
+        corr_fam_1 = loaded_data["corr_fam_1"]
+        corr_fam_4 = loaded_data["corr_fam_4"]
 
     save_image(
         torch.cat(fig_data, 0),
-        f'{folder_path}efficient_recon_sample_ss2_ss4.png', pad_value=0.6,
-        nrow=n_4, normalize=False)
+        f'{folder_path}efficient_recon_sample_ss1_ss4.png', pad_value=0.6,
+        nrow=ss4, normalize=False)
 
     plt.figure()
 
     sns.lineplot(
-        x=[n_2, n_4],
-        y=[corr_l1_2, corr_l1_4],
+        x=[ss1, ss4],
+        y=[corr_nov_1, corr_nov_4],
         label='novel images (L1)'
     )
 
     sns.lineplot(
-        x=[n_2, n_4],
-        y=[corr_sc_2, corr_sc_4],
+        x=[ss1, ss4],
+        y=[corr_fam_1, corr_fam_4],
         label='familiar images (feature maps)'
     )
 
@@ -688,14 +700,14 @@ def fig_repeat_recon(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     # Rows 3+: BP recon at set sizes 1 through numimg
     for n in range(1, numimg+1):
         # Store and retrieve shape+color maps
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, n, normalize_fact_novel)
-        BP_activations_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, n, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, n, normalize_factor)
+        BP_activations_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, n, normalize_factor)
         shape_out_all, color_out_all = BP_activations_out['shape'], BP_activations_out['color']
         retrievals = vae.decoder_cropped(shape_out_all, color_out_all, 0, 0).cuda()
         
         # Store and retrieve L1
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1, n, normalize_fact_novel)
-        BP_activations_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1, n, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1, n, normalize_factor)
+        BP_activations_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1, n, normalize_factor)
         l1_out_all = BP_activations_out['l1']
         recon_layer1_skip = vae.decoder_skip_cropped(0, 0, 0, l1_out_all.view(n, -1))
         
@@ -796,14 +808,14 @@ def fig_non_repeat_recon(vae: VAE_CNN, folder_path: str, load_data: bool = False
     # Rows 3+: BP recon at set sizes 1 through numimg
     for n in range(1, numimg+1):
         # Store and retrieve shape+color maps
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, n, normalize_fact_novel)
-        BP_activations_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, n, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, n, normalize_factor)
+        BP_activations_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, n, normalize_factor)
         shape_out_all, color_out_all = BP_activations_out['shape'], BP_activations_out['color']
         retrievals = vae.decoder_cropped(shape_out_all, color_out_all, 0, 0).cuda()
         
         # Store and retrieve L1
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1, n, normalize_fact_novel)
-        BP_activations_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1, n, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1, n, normalize_factor)
+        BP_activations_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1, n, normalize_factor)
         l1_out_all = BP_activations_out['l1']
         recon_layer1_skip = vae.decoder_skip_cropped(0, 0, 0, l1_out_all.view(n, -1))
         
@@ -882,15 +894,15 @@ def fig_non_color_repeat_recon(vae: VAE_CNN, folder_path: str, load_data: bool =
     # store 1 -> numimg items
     for n in range(numimg,numimg+1):
         #Store and retrieve the map versions
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, n,normalize_fact_novel)
-        BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, n,normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, n,normalize_factor)
+        BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, n,normalize_factor)
         shape_out_all, color_out_all = BP_activations_out['shape'], BP_activations_out['color']
         z = torch.randn(numimg-n,8).cuda()
         retrievals = vae.decoder_cropped(shape_out_all, color_out_all,0,0).cuda()
         #retrievals = retrievals[:n]
         #Store and retrieve the L1 version
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1, n,normalize_fact_novel)
-        BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1, n,normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1, n,normalize_factor)
+        BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1, n,normalize_factor)
         #l1_out_all=l1_act[:n] #remove
         l1_out_all = BP_activations_out['l1']
         recon_layer1_skip = vae.decoder_skip_cropped(0, 0, 0, l1_out_all.view(n,-1))
@@ -965,8 +977,8 @@ def fig_novel_representations(vae: VAE_CNN, folder_path: str, load_data: bool = 
     imgsize = 28
     numimg = 6
     vae.eval()
-    bpsize = 10000#00         #size of the binding pool
-    token_overlap =0.3
+    #bpsize = 10000#00         #size of the binding pool
+    #token_overlap =0.3
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
     #load in some examples of Bengali Characters
     for i in range (1,numimg+1):
@@ -1010,18 +1022,20 @@ def fig_novel_representations(vae: VAE_CNN, folder_path: str, load_data: bool = 
         BP_activations_sc = {'shape': [shape_act[n].view(1,-1), 1], 'color': [color_act[n].view(1,-1), 1]}
         
         #now store/retrieve from L1
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1, 1,normalize_fact_novel)
-        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1, 1,normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_l1, 1,normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_l1, 1,normalize_factor)
         BP_layerI_out = BP_act_out['l1']
 
         BP_layer1_skip = vae.decoder_skip_cropped(0, 0, 0, BP_layerI_out.view(1,-1))
+        # add some gaussian blur to eliminate the stippling
+        BP_layer1_skip = Ft.gaussian_blur(BP_layer1_skip, kernel_size=[3, 3], sigma=[500.0, 500.0])
 
         # reconstruct  from BP version of layer 1, run through the bottleneck
         bn_act = vae.activations(0, False, BP_layerI_out.view(1,-1))
         BP_layer1_noskip = vae.decoder_cropped(bn_act['shape'], bn_act['color'])
         
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, 1,normalize_fact_novel)
-        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, 1,normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, 1,normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, 1,normalize_factor)
         shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
         #reconstruct from BP version of the shape and color maps
         retrievals = vae.decoder_cropped(shape_out_BP, color_out_BP,0,0).cuda()
@@ -1178,8 +1192,8 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
                         'color': [colors.view(3, -1), 1]}
 
         # now store/retrieve from object and color maps
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations, 3, normalize_fact_novel)
-        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations, 3, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations, 3, normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations, 3, normalize_factor)
         BP_obj_out = BP_act_out['object']
         BP_color_out = BP_act_out['color']
 
@@ -1193,8 +1207,8 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         BP_activations_oneHot = {'object': [object_oneHot.view(3, -1), 1],
                                 'color': [color_oneHot.view(3, -1), 1]}
 
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_oneHot, 3, normalize_fact_novel)
-        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_oneHot, 3, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_oneHot, 3, normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_oneHot, 3, normalize_factor)
         BP_obj_out_label = BP_act_out['object']
         BP_color_out_label = BP_act_out['color']
 
@@ -1213,8 +1227,8 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         # holistic BP
         BP_activations = {'l1': [holistict_activations['skip'], 1]}
 
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations, 1, normalize_fact_novel)
-        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations, 1, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations, 1, normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations, 1, normalize_factor)
         BP_l1_out = BP_act_out['l1']
 
         # hybrid holistic bg + object_latent:
@@ -1222,8 +1236,8 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
                             'color': [colors.view(3, -1), 1],
                             'l1': [holistict_activations['skip'].view(3,-1), 1]}
         
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations, 3, normalize_fact_novel)
-        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations, 3, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations, 3, normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations, 3, normalize_factor)
         BP_l1_H = BP_act_out['l1']
         BP_object_H = BP_act_out['object']
         BP_color_H = BP_act_out['color']
@@ -1239,8 +1253,8 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         BP_activations_oneHot_H = {'object': [object_oneHot.view(3, -1), 1],
                                 'color': [color_oneHot.view(3, -1), 1],
                                 'l1': [holistict_activations['skip'].view(3,-1), 1]}       
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_oneHot_H, 3, normalize_fact_novel)
-        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_oneHot_H, 3, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_oneHot_H, 3, normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_oneHot_H, 3, normalize_factor)
         BP_obj_out_label = BP_act_out['object']
         BP_color_out_label = BP_act_out['color']
         BP_l1_H = BP_act_out['l1']
@@ -1269,8 +1283,8 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
                                 'l1': [holistict_activations['skip'].view(1,-1), 1],
                                 'act_bitmask': [[1, 0, 0, 0], [0, 1, 1, 0], [0, 1, 1, 0], [0, 0, 0, 1]],
                                 'act_name_map': ['l1_item', 'object_1hot', 'color_1hot', 'l1']}       
-        BPOut, Tokenbindings = BPTokens_storage_bitmask(bpsize, bpPortion, BP_activations_oneHot_H, 4, normalize_fact_novel)
-        BP_act_out = BPTokens_retrieveByToken_bitmask(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_oneHot_H, 4, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage_bitmask(bpsize, bpPortion, BP_activations_oneHot_H, 4, normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken_bitmask(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_oneHot_H, 4, normalize_factor)
         BP_l1_item = BP_act_out['l1_item']
         BP_obj_out_label = BP_act_out['object_1hot']
         BP_color_out_label = BP_act_out['color_1hot']
@@ -1488,7 +1502,7 @@ def fig_obj_scene_recon(vae: VAE_CNN, object_label, color_label, object_classifi
     dataloaders = (obj_1_loader, obj_2_loader, obj_3_loader, bs)
 
     losses_junk = obj_scene_helper(vae, dataloaders, n, save_img=True, return_loss=True, bpsize=bpsize, bpPortion=bpPortion, object_label=object_label, color_label=color_label, object_classifier=object_classifier, color_classifier=color_classifier, folder_path=folder_path)
-    loss_trials = 20
+    loss_trials = 100
     losses_dict = {}
 #    for bpsize in [15000, 10000, 7000, 5000, 4000, 3000, 1000, 500]:
     for bpsize in [10000]:
@@ -1896,13 +1910,16 @@ def fig_binding_addressability(vae: VAE_CNN, color_classifier, folder_path: str,
         #now run a batch of trials for each of the two conditions:
         #compute how often the correct token & color is retrieved  
         #return the last trial as a visual example for the figure 
-        
-        fig_data_list_r = store_retrieve2('emnist_rand', dataset, vae, color_classifier, numimg, folder_path)  #two random ones
-        fig_data_list_2 = store_retrieve2('emnist_2', dataset_2, vae, color_classifier, numimg, folder_path)   #always the same letter 
+        print('generating two random items')
+        fig_data_list_r, accuracy_r = store_retrieve2('emnist_rand', dataset, vae, color_classifier, numimg, folder_path)  #two random ones
+        print('generating two As')
+        fig_data_list_2,accuracy_2 = store_retrieve2('emnist_2', dataset_2, vae, color_classifier, numimg, folder_path)   #always the same letter 
     
         data_to_pickle = {
             "fig_data_list_r": fig_data_list_r,
-            "fig_data_list_2": fig_data_list_2
+            "fig_data_list_2": fig_data_list_2,
+            "accuracy_r": accuracy_r,
+            "accuracy_2": accuracy_2
         }
 
         joblib.dump(data_to_pickle, pkl_path)
@@ -1915,21 +1932,52 @@ def fig_binding_addressability(vae: VAE_CNN, color_classifier, folder_path: str,
         loaded_data = joblib.load(pkl_path)
         fig_data_list_r = loaded_data["fig_data_list_r"]
         fig_data_list_2 = loaded_data["fig_data_list_2"]
+        accuracy_r = loaded_data["accuracy_r"]
+        accuracy_2 = loaded_data["accuracy_2"]
 
     save_image(torch.cat(fig_data_list_r, 0), f'{folder_path}mnist_rand-addressability.png',
                 nrow=numimg, normalize=False, pad_value=0.6)
 
     save_image(torch.cat(fig_data_list_2, 0), f'{folder_path}mnist_2-addressability.png',
             nrow=numimg, normalize=False, pad_value=0.6)
+        # --- bar graph of addressability accuracy ---
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    labels = ['Correct Token', 'Correct Color']
+    random_vals = [accuracy_r['correct_token'], accuracy_r['correct_color']]
+    same_vals = [accuracy_2['correct_token'], accuracy_2['correct_color']]
+
+    x = np.arange(len(labels))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    bars1 = ax.bar(x - width/2, random_vals, width, label='Random', color='#4878CF')
+    bars2 = ax.bar(x + width/2, same_vals, width, label='Same', color='#D65F5F')
+
+    ax.set_ylabel('Proportion Correct')
+    ax.set_title('Binding Pool Addressability')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.set_ylim(0, 1.05)
+    ax.legend()
+
+    plt.tight_layout()
+    plt.savefig(f'{folder_path}addressability_bargraph.png', dpi=300)
+    plt.close()
+    print(f"Bar graph saved to {folder_path}addressability_bargraph.png")
+
+
 
 def store_retrieve2(trial_name: str, dataset, vae: VAE_CNN, color_classifier, numimg, folder_path: str):
     #stores two items in memory with different colors and then retrieves based on the shape 
-    token_overlap = 0.3
+
+
     bpPortion = int(token_overlap *bpsize)
 
     test_loader = cycle(dataset.get_loader(numimg))
     dataiter = iter(test_loader)
-    total_trials = 100
+    total_trials = 1000
     out_predictions = 0
     token_predictions = 0
     
@@ -1957,7 +2005,7 @@ def store_retrieve2(trial_name: str, dataset, vae: VAE_CNN, color_classifier, nu
         BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1], 'color': [color_act.view(numimg,-1), 1]}
         
         #now store digits
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_factor)
         
         BPOut_cued = BPOut.clone()
         # cue by greyscale shape activation of first image
@@ -1977,8 +2025,8 @@ def store_retrieve2(trial_name: str, dataset, vae: VAE_CNN, color_classifier, nu
         max, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
         BPOut_cued[0, notLink_all[maxtoken, :]] = 0
 
-        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
-        BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_factor)
+        BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_factor)
         
         #cued_prediction = shape_classifier.predict(BP_act_out_cued['shape'][0].view(1,-1).cpu())
 
@@ -2007,6 +2055,10 @@ def store_retrieve2(trial_name: str, dataset, vae: VAE_CNN, color_classifier, nu
 
     #save an image showing:  original images, reconstructions directly from L1,  from L1 BP, from L1 BP through bottleneck, from maps BP
     fig_data_list = [sample, BP_cropped_recon, grey_cue, BP_cropped_recon_cued]
+    accuracy = {'correct_token': token_predictions / total_trials, 
+                'correct_color': out_predictions / total_trials,
+                'total_trials': total_trials}
+
     
     # save params used in this simulation run
     with open(f"{folder_path}params.txt", "w") as f:
@@ -2014,7 +2066,7 @@ def store_retrieve2(trial_name: str, dataset, vae: VAE_CNN, color_classifier, nu
         f.write(f"token_overlap: {token_overlap}\n")
         f.write(f"bpPortion: {bpPortion}\n")
     
-    return fig_data_list
+    return fig_data_list, accuracy
 
 
 
@@ -2040,6 +2092,7 @@ def sample_points(n, m, k=5, min_dist=5):
     return points
 
 def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
+    #used in the interference panel
     test_loader = cycle(dataset.get_loader(numimg))
     dataiter = iter(test_loader)
     
@@ -2095,7 +2148,7 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
                              'location': [location_act.view(numimg,-1), 1]}
         
         #now store digits
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_factor)
         
         BPOut_cued = BPOut.clone()
         # cue by greyscale shape activation of first image
@@ -2113,8 +2166,8 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
         max, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
         BPOut_cued[0, notLink_all[maxtoken, :]] = 0
 
-        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
-        BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_fact_novel)
+        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_factor)
+        BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_factor)
         
         shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
         shape_out_BP_cued, color_out_BP_cued = BP_act_out_cued['shape'], BP_act_out_cued['color']
@@ -2138,10 +2191,11 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
         for i in range(numimg):
             excluded_errors += [torch.norm(excluded_color_act[i]-color_out_BP_cued[0]).item()]
         
-        errors_1 += [npy.mean(errors[1:])]
+        errors_1 += [npy.mean(errors[1:])] if len(errors) > 1 else [0.0]
         errors_2 += [npy.mean(excluded_errors)]
     correct_token_err_out = npy.mean(npy.array(correct_token_err))
-    correct_token_chosen_err_out = npy.mean(npy.array(correct_token_chosen_err))
+    #correct_token_chosen_err_out = npy.mean(npy.array(correct_token_chosen_err))
+    correct_token_chosen_err_out = npy.mean(npy.array(correct_token_chosen_err)) if len(correct_token_chosen_err) > 0 else float('nan')
     errors = npy.mean(npy.array(errors_1))
     excluded_errors = npy.mean(npy.array(errors_2))
     
@@ -2159,8 +2213,8 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str, load_data: bool = False):
         vae.eval()
         # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that as a cue
 
-        bpsize = 10000        #size of the binding pool
-        token_overlap =0.3
+        #bpsize = 10000        #size of the binding pool
+        #token_overlap =0.3
         bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
         dataset = Dataset('square',{'retina':False, 'colorize':False, 'rotate':False, 'scale':True}, train=False)
@@ -2231,8 +2285,8 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str, load_data: bool = F
 
     numimg = 2
 
-    bpsize = 10000#00         #size of the binding pool
-    token_overlap =0.35
+    #bpsize = 10000#00         #size of the binding pool
+    #token_overlap =0.35
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
     targetset = list(range(0, 4))
     targetset.append(15)
@@ -2261,8 +2315,8 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str, load_data: bool = F
         
         
         #now store/retrieve from L1
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg,normalize_fact_novel)
-        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg,normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg,normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg,normalize_factor)
 
 
         # then through BP
@@ -2282,8 +2336,8 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str, load_data: bool = F
                              'location': [location_act.view(numimg,-1), 1], 'scale': [scale_act.view(numimg,-1), 1]}
         
         #now store/retrieve from L1
-        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg,normalize_fact_novel)
-        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg,normalize_fact_novel)
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg,normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg,normalize_factor)
         
         shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
         location_out_BP, scale_out_BP = BP_act_out['location'], BP_act_out['scale']

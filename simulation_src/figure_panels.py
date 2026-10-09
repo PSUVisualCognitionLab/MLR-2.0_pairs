@@ -9,8 +9,8 @@ def interference(vae, folder_path, load_data=False):
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
 
-    figures.fig_feature_swap(vae, folder_path, load_data)
-    figures.fig_efficient_rep(vae, folder_path) #WORKING
+    figures.fig_efficient_rep(vae, folder_path) 
+    #figures.fig_feature_swap(vae, folder_path, load_data)
     pass
 
 @torch.no_grad()
