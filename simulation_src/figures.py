@@ -457,7 +457,7 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
         print('generating Figure efficient reconstruction plot')
         retina_size = 100
         imgsize = 28
-        bpsize = 5000         #size of the binding pool
+        #bpsize = 10000         #size of the binding pool
         #token_overlap = 0.3
         bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
         numimg = 7
@@ -544,11 +544,16 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
             recon_nov_4 = vae.decoder_skip_cropped(0, 0, 0, l1_out_4).cuda()
             recon_nov_4 = Ft.gaussian_blur(recon_nov_4, kernel_size=[3, 3], sigma=[1.0, 1.0])
 
-            corr_fam_1 = compute_correlation(emnist_sample[:ss1], recon_fam_1).item()
-            corr_nov_1 = compute_correlation(emnist_sample[:ss1], recon_nov_1).item()
 
-            corr_fam_4 = compute_correlation(emnist_sample, recon_fam_4).item()
-            corr_nov_4 = compute_correlation(emnist_sample, recon_nov_4).item()
+            corr_fam_1 = batch_ssim(emnist_sample[:ss1], recon_fam_1)
+            corr_nov_1 = batch_ssim(emnist_sample[:ss1], recon_nov_1)
+            corr_fam_4 = batch_ssim(emnist_sample, recon_fam_4)
+            corr_nov_4 = batch_ssim(emnist_sample, recon_nov_4)
+#            corr_fam_1 = compute_correlation(emnist_sample[:ss1], recon_fam_1).item()
+#            corr_nov_1 = compute_correlation(emnist_sample[:ss1], recon_nov_1).item()
+
+#            corr_fam_4 = compute_correlation(emnist_sample, recon_fam_4).item()
+#            corr_nov_4 = compute_correlation(emnist_sample, recon_nov_4).item()
 
             fam_1 += [corr_fam_1]
             nov_1 += [corr_nov_1]
@@ -620,6 +625,19 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
 
     plt.savefig(f'{folder_path}efficient_recon.png')
     plt.close()
+
+
+def batch_ssim(x, y):
+    """x, y: (B, C, H, W) torch tensors. Returns mean SSIM across batch."""
+    x_np = x.cpu().numpy()
+    y_np = y.cpu().numpy()
+    vals = []
+    for i in range(x_np.shape[0]):
+        # (C, H, W) -> (H, W, C)
+        s = ssim(x_np[i].transpose(1,2,0), y_np[i].transpose(1,2,0),
+                 data_range=1.0, channel_axis=-1)
+        vals.append(s)
+    return sum(vals) / len(vals)
 
 @torch.no_grad()
 def fig_repeat_recon(vae: VAE_CNN, folder_path: str, load_data: bool = False):
@@ -1419,51 +1437,6 @@ def batch_ssim(pred, target, data_range=1.0):
     return sum(scores) / len(scores)
 
 
-# THIS CUSTOM SSIM IS DEPRECATED, NOW USING SCIKIT VERSION
-def foreground_ssim(pred, target, fg_mask, window_size=7, fg_weight=5.0):
-    # Compute SSIM weighted toward foreground pixels. Higher = better match.
-    # Returns 1 - SSIM so it can be used as a loss (lower = better).
-    C1 = 0.01 ** 2
-    C2 = 0.03 ** 2
-    pad = window_size // 2
-
-    # per-channel, then average
-    channels = pred.size(1)
-    ssim_val = 0.0
-
-    for c in range(channels):
-        p = pred[:, c:c+1]
-        t = target[:, c:c+1]
-        w = fg_mask[:, 0:1]  # single-channel mask
-        #bg = 1.0 - fg_mask[:, 0:1]
-        #w = bg + fg_mask[:, 0:1] * fg_weight
-
-        pw = p * w
-        tw = t * w
-
-        mu_p = F.avg_pool2d(pw, window_size, stride=1, padding=pad)
-        mu_t = F.avg_pool2d(tw, window_size, stride=1, padding=pad)
-        count = F.avg_pool2d(w, window_size, stride=1, padding=pad).clamp(min=1e-6)
-
-        # correct for masked averaging
-        mu_p = mu_p / count
-        mu_t = mu_t / count
-
-        sigma_p2 = F.avg_pool2d(pw * p, window_size, stride=1, padding=pad) / count - mu_p ** 2
-        sigma_t2 = F.avg_pool2d(tw * t, window_size, stride=1, padding=pad) / count - mu_t ** 2
-        sigma_pt = F.avg_pool2d(pw * t, window_size, stride=1, padding=pad) / count - mu_p * mu_t
-
-        sigma_p2 = sigma_p2.clamp(min=0)
-        sigma_t2 = sigma_t2.clamp(min=0)
-
-        num = (2 * mu_p * mu_t + C1) * (2 * sigma_pt + C2)
-        den = (mu_p ** 2 + mu_t ** 2 + C1) * (sigma_p2 + sigma_t2 + C2)
-
-        ssim_map = (num / den) * w
-        ssim_val += ssim_map.sum() / w.sum().clamp(min=1)
-
-    ssim_val = ssim_val / channels
-    return (1.0 - ssim_val).item()
 
 
 @torch.no_grad()
@@ -2095,7 +2068,10 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
     #used in the interference panel
     test_loader = cycle(dataset.get_loader(numimg))
     dataiter = iter(test_loader)
-    
+    bpsize = 10000        #size of the binding pool
+    token_overlap =0.3
+    bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
+
     errors_1 = []
     errors_2 = []
     correct_token_err = []
@@ -2107,12 +2083,13 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
         crop_imgs = next(dataiter)[0].cuda()
 
         imgs = torch.zeros(numimg,3,64,64).cuda()
-        locations = sample_points(64 - imgsize, 64 - imgsize, k=numimg, min_dist=5)
-        colors = []
+        locations = sample_points(64 - imgsize, 64 - imgsize, k=numimg, min_dist=10)
+        
+        colors = random.sample(range(10), numimg)
         for i in range(numimg):
             x, y = locations[i]
             imgs[i,:,x:x+imgsize,y:y+imgsize] = crop_imgs[i]
-            color = 1 #random.randint(0,9)
+            color = colors[i]
             colors.append(color)
             colorizer = Colorize_specific(color)
             frame = convert_tensor(colorizer(convert_image(imgs[i].cpu())))
@@ -2200,23 +2177,39 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
     excluded_errors = npy.mean(npy.array(errors_2))
     
     print(locations)
+    # build example figure from the last trial: originals, BP recons, grey cue, cued recon
+    BP_cropped_recon = vae.decoder_cropped(shape_out_BP, color_out_BP, 0, 0)
+    BP_cropped_recon_cued = vae.decoder_cropped(shape_out_BP_cued, color_out_BP_cued, 0, 0)
+    grey_weights = torch.tensor([0.2989, 0.5870, 0.1140], device=imgs.device).view(1, 3, 1, 1)
+    grey_cue = (imgs[0:1] * grey_weights).sum(dim=1, keepdim=True).repeat(1, 3, 1, 1)
+    # pad cue row to match numimg items
+    cue_pad = torch.zeros(numimg - 1, 3, 64, 64).cuda()
+    grey_cue_row = torch.cat([grey_cue, cue_pad], 0)
+    # resize 28x28 recons to 64x64
+    BP_cropped_recon_up = F.interpolate(BP_cropped_recon, size=(64, 64), mode='bilinear', align_corners=False)
+    BP_cropped_recon_cued_up = F.interpolate(BP_cropped_recon_cued, size=(64, 64), mode='bilinear', align_corners=False)
+    # pad cued recon row (it's 1 item) to numimg
+    cued_pad = torch.zeros(numimg - 1, 3, 64, 64).cuda()
+    cued_row = torch.cat([BP_cropped_recon_cued_up, cued_pad], 0)
+    example_imgs = torch.cat([
+        imgs,                     # row 1: originals
+        BP_cropped_recon_up,      # row 2: all BP recons
+        grey_cue_row,             # row 3: cue (first item, rest blank)
+        cued_row,                 # row 4: cued recon (first item, rest blank)
+    ], 0)
+
     print(f"Feature swap count: {token_swap} {swap_count} out of {trial_count}")
     print("Feature swap color vector difference:", errors)
     print("Feature swap color vector difference exlcuded:", excluded_errors)
-    return [token_swap / trial_count, swap_count / trial_count, correct_token_err_out, correct_token_chosen_err_out, errors, excluded_errors]
-
+    return [token_swap / trial_count, swap_count / trial_count, correct_token_err_out, correct_token_chosen_err_out, errors, excluded_errors, example_imgs, numimg]
+    
 @torch.no_grad()
 def fig_feature_swap(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
     
     if load_data is False:
         vae.eval()
-        # store 2 digits, generate activations of greyscaled rep of 1 of the digits, retrieve from BP using that as a cue
-
-        #bpsize = 10000        #size of the binding pool
-        #token_overlap =0.3
-        bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
-
+        # store several colored squares.  Compute how often there is a swap for each set size
         dataset = Dataset('square',{'retina':False, 'colorize':False, 'rotate':False, 'scale':True}, train=False)
 
         #iterate numimg 1-8, compute swap rate at each
@@ -2230,7 +2223,8 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str, load_data: bool = False):
             color_swap_rates += [swaps[1]]
             errors_list += [[swaps[2], swaps[4]]]
             correct_token_chosen_err += [swaps[3]]
-        
+            save_image(swaps[6], f'{folder_path}feature_swap_example_{numing}.png',
+                       nrow=swaps[7], normalize=False, pad_value=0.6)
         data_to_pickle = {
             "token_swap_rates": token_swap_rates,
             "color_swap_rates": color_swap_rates,
@@ -2267,7 +2261,7 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str, load_data: bool = False):
 
     # error between selected color and true color  
     sns.lineplot(x=range(1, 8), y=[e[0] for e in errors_list], label='Correct items')
-    sns.lineplot(x=range(1, 8), y=[e[1] for e in errors_list], label='Other items')
+    #sns.lineplot(x=range(1, 8), y=[e[1] for e in errors_list], label='Other items')
     sns.lineplot(x=range(1, 8), y=correct_token_chosen_err, label='Correct token chosen')
     plt.xlabel('Number of items')
     plt.ylabel('MSE latent color vector')
