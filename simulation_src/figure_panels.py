@@ -111,3 +111,9 @@ def modality(vae, shape_label, s_classes, folder_path, load_data=False):
         
     figures.percept_concept(vae, shape_label, s_classes, folder_path, load_data)
 
+@torch.no_grad()
+def allstims(vae, folder_path, load_data=False):
+    folder_path = folder_path + "allstims/"
+    if not os.path.exists(folder_path):
+        os.mkdir(folder_path)
+    figures.fig_allstims(vae, folder_path, load_data)

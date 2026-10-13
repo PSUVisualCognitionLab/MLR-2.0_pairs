@@ -554,7 +554,6 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
             corr_nov_4 = batch_ssim(emnist_sample, recon_nov_4)
 #            corr_fam_1 = compute_correlation(emnist_sample[:ss1], recon_fam_1).item()
 #            corr_nov_1 = compute_correlation(emnist_sample[:ss1], recon_nov_1).item()
-
 #            corr_fam_4 = compute_correlation(emnist_sample, recon_fam_4).item()
 #            corr_nov_4 = compute_correlation(emnist_sample, recon_nov_4).item()
 
@@ -1448,7 +1447,7 @@ def fig_obj_scene_recon(vae: VAE_CNN, object_label, color_label, object_classifi
     device = next(vae.parameters()).device
     object_label.to(device)
     # holistic rep for background, lowpass filter average, latent representation for objects, reconstruct and layer
-    # MSE for each reconstruction row over 1000 trials.
+    # SSIM for each reconstruction row over 1000 trials.
     quickdraw_target_set = [0, 2, 8, 10, 11]
     #novel stimulus
     obj_1_transforms = {'retina': True, 'colorize': True, 'scale': False, 'target_set': [37],
@@ -2255,7 +2254,7 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     #sns.lineplot(x=range(1, 8), y=[e[1] for e in errors_list], label='Other items')
     sns.lineplot(x=range(1, 8), y=correct_token_chosen_err, label='Correct token chosen')
     plt.xlabel('Number of items')
-    plt.ylabel('MSE latent color vector')
+    plt.ylabel('SSIM color vector')
     plt.legend()
     plt.savefig(f'{folder_path}feature_error.png')
     plt.close()
@@ -2266,9 +2265,7 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str, load_data: bool = F
     
     vae.eval()
     print("encoding flexibility figure")
-
-
-    numimg = 2
+    numimg = 1
 
     #bpsize = 10000#00         #size of the binding pool
     #token_overlap =0.35
@@ -2276,7 +2273,7 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str, load_data: bool = F
     targetset = list(range(0, 4))
     targetset.append(15)
     #dataset = Dataset('emnist',{'retina':True, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':targetset}, train=False)
-    dataset = Dataset('emnist',{'retina':True, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[0, 1, 2, 3, 4, 15]}, train=True)
+    dataset = Dataset('emnist',{'retina':True, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[10, 12, 15, 18, 20], 'location_targets': {(-1, -1): [10, 12, 15, 18, 20]}}, train=True)
     test_loader = dataset.get_loader(numimg)
     dataiter = iter(test_loader)
     imgs = next(dataiter)[0][0].cuda()
@@ -2298,11 +2295,9 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str, load_data: bool = F
         BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1/n], 'color': [color_act.view(numimg,-1), 1], 
                              'location': [location_act.view(numimg,-1), 1], 'scale': [scale_act.view(numimg,-1), 1]}
         
-        
         #now store/retrieve from L1
         BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg,normalize_factor)
         BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg,normalize_factor)
-
 
         # then through BP
         #bp_crop_recon = vae.decoder_cropped(BP_act_out['shape'], BP_act_out['color'])
@@ -2342,3 +2337,81 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str, load_data: bool = F
         f.write(f"bpsize: {bpsize}\n")
         f.write(f"token_overlap: {token_overlap}\n")
         f.write(f"bpPortion: {bpPortion}\n")
+
+
+@torch.no_grad()
+def fig_allstims(vae: VAE_CNN, folder_path: str, load_data: bool = False):
+    from PIL import Image as PILImg, ImageDraw as PILDraw
+
+    vae.eval()
+    device = next(vae.parameters()).device
+
+    N_EX   = 3
+    N_SHP  = 36
+    QD_CLS = [0, 2, 8, 10, 11]
+    N_TOT  = N_SHP + len(QD_CLS)   # 41
+
+    col_labels = (
+        ['0','1','2','3','4','5','6','7','8','9'] +
+        list('ABCDEFGHIJKLMNOPQRSTUVWXYZ') +
+        [object_names[i][:4] for i in QD_CLS]
+    )
+
+    def fill_bins(loader, bins, needed_keys, n_ex):
+        for imgs, labels in loader:
+            for i in range(imgs.size(0)):
+                lbl = labels[0][i].item()
+                if lbl in bins and len(bins[lbl]) < n_ex:
+                    bins[lbl].append(imgs[i].cpu())
+            if all(len(bins[k]) >= n_ex for k in needed_keys):
+                break
+
+    shape_bins = {i: [] for i in range(N_SHP)}
+    fill_bins(Dataset('mnist',  {'retina': False, 'colorize': True}, train=True).get_loader(256),
+              shape_bins, range(10), N_EX)
+    fill_bins(Dataset('emnist', {'retina': False, 'colorize': True}, train=True).get_loader(256),
+              shape_bins, range(10, 36), N_EX)
+
+    obj_bins = {cls: [] for cls in QD_CLS}
+    fill_bins(Dataset('quickdraw', {'retina': False, 'colorize': True, 'target_set': QD_CLS},
+                      train=True).get_loader(256),
+              obj_bins, QD_CLS, N_EX)
+
+    shape_recons = {}
+    for lbl in range(N_SHP):
+        batch = torch.stack(shape_bins[lbl][:N_EX]).to(device)
+        shape_recons[lbl] = vae.decoder_shape(vae.activations(batch, False)['shape'])
+
+    obj_recons = {}
+    for cls in QD_CLS:
+        batch = torch.stack(obj_bins[cls][:N_EX]).to(device)
+        obj_recons[cls] = vae.decoder_object(vae.activations(batch, False)['object'])
+
+    cells = []
+    for row in range(N_EX):
+        for lbl in range(N_SHP):
+            cells.append(shape_recons[lbl][row])
+        for cls in QD_CLS:
+            cells.append(obj_recons[cls][row])
+
+    W, H = N_TOT * imgsize, N_EX * imgsize
+    grid_hw = (torch.stack(cells)
+               .view(N_EX, N_TOT, 3, imgsize, imgsize)
+               .permute(2, 0, 3, 1, 4).contiguous()
+               .view(3, H, W))
+
+    sep_x = N_SHP * imgsize
+    grid_hw[:, :, sep_x] = 0.25
+
+    hdr_pil = PILImg.new('RGB', (W, 16), (220, 220, 220))
+    draw = PILDraw.Draw(hdr_pil)
+    for c, name in enumerate(col_labels):
+        draw.text((c * imgsize + 2, 2), name, fill=(0, 0, 0))
+    #hdr = transforms.ToTensor()(hdr_pil)
+    hdr = transforms.ToTensor()(hdr_pil).to(device)
+    hdr[:, :, sep_x] = 0.25
+
+    full = torch.cat([hdr, grid_hw], dim=1)
+    save_image(full.unsqueeze(0), f'{folder_path}fig_identity_recon_grid.png', nrow=1, normalize=False)
+
+        
