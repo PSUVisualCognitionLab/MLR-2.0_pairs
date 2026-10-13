@@ -2287,7 +2287,6 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str, load_data: bool = F
     theta_orig = torch.cat([scale_act, location_act], 1)
     color_degraded = []
     shape_degraded = []
-
     crop, theta = vae.stn_encode(imgs.view(-1,3,64,64))
 
     # degrade shape encoding weight: 1 -> 0.2
@@ -2325,13 +2324,24 @@ def fig_encoding_flexibility(vae: VAE_CNN, folder_path: str, load_data: bool = F
         theta = torch.cat([scale_out_BP, location_out_BP], 1)
         BP_retinal_recon = vae.decoder_retinal(shape_out_BP, color_out_BP, theta)
         color_degraded += [BP_retinal_recon]
-    degraded = [x for pair in zip(shape_degraded, color_degraded) for x in pair]
-    degraded = torch.cat(degraded,0)
-    sample = imgs[0: numimg].view(numimg, 3, 64, 64)
+        location_degraded = []
+    # degrade location encoding weight: 1 -> 0.2
+        
+    for n in range(1, 10, 2):
+        BP_activations_sc = {'shape':    [shape_act.view(numimg,-1),    1],
+                            'color':    [color_act.view(numimg,-1),    1],
+                            'location': [location_act.view(numimg,-1), 1/n],
+                            'scale':    [scale_act.view(numimg,-1),    1]}
+        BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_factor)
+        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_factor)
+        theta = torch.cat([BP_act_out['scale'], BP_act_out['location']], 1)
+        location_degraded += [vae.decoder_retinal(BP_act_out['shape'], BP_act_out['color'], theta)]
 
-    #save an image showing:  original images, reconstructions directly from L1,  from L1 BP, from L1 BP through bottleneck, from maps BP
-    save_image(torch.cat([sample, sample, degraded], 0), f'{folder_path}figure2b.png',
-            nrow=numimg*2, normalize=False, pad_value=0.6)
+        degraded = [x for triple in zip(shape_degraded, color_degraded, location_degraded) for x in triple]
+        degraded = torch.cat(degraded, 0)
+        sample = imgs[0: numimg].view(numimg, 3, 64, 64)
+        save_image(torch.cat([sample, sample, sample, degraded], 0), f'{folder_path}figure2b.png',
+                nrow=numimg*3, normalize=False, pad_value=0.6)
     
     with open(f"{folder_path}params.txt", "w") as f:
         f.write(f"bpsize: {bpsize}\n")
