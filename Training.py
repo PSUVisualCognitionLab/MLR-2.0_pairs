@@ -20,7 +20,7 @@ parser.add_argument("--wandb", type=bool, default=False, help="Track training wi
 parser.add_argument("--checkpoint_name", type=str, default='mVAE_checkpoint.pth', help="file name of checkpoint .pth")
 parser.add_argument("--start_ep", type=int, default=1, help="what epoch to resume training")
 parser.add_argument("--end_ep", type=int, default=100, help="what epoch to train to")
-parser.add_argument("--train_retinal_end", type=float, default=0.8, help="what fraction of training to start training the retinal latent space (0.0 for all epochs, 1.0 for none...)")
+parser.add_argument("--train_retinal_end", type=float, default=0.8, help="what fraction of training to stop training the retinal latent space (1.0 for all epochs, 0.0 for none...)")
 parser.add_argument("--wait", type=int, default=0, help="how many seconds to wait before training")
 parser.add_argument("--ep_size", type=int, default=60, help="how many batches per epoch") # min 10
 parser.add_argument("--debug", type=bool, default=False, help="Enable debug mode")
