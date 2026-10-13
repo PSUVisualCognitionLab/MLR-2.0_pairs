@@ -967,7 +967,7 @@ class Dataset(data.Dataset):
             if target in self.target_quadrants:
                 translation_quadrant = self.target_quadrants[target]
             else:
-                #print('TARGET MISS', target, self.target_quadrants)
+                print('TARGET MISS', target, self.target_quadrants)
                 translation_quadrant = random.choice([(-1, -1), (1, 1), (-1, 1), (1, -1)])
             if image.size != (28,28):
                 print('size miss')

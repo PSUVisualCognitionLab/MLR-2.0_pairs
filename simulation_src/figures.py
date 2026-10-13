@@ -17,7 +17,7 @@ import matplotlib as mpl
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
 import math
-from scipy import stats
+from scipy import stats, ndimage
 import gc
 from PIL import Image
 from itertools import cycle
@@ -522,7 +522,8 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
             BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_nov_1, ss1,normalize_factor)
             BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_nov_1, ss1,normalize_factor)
             l1_out_1 = BP_activations_out['l1']
-
+            
+            
             # store and retrieve 4 familiar s/c maps
             BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_fam_4, ss4,normalize_factor)
             BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_fam_4, ss4,normalize_factor)
@@ -532,18 +533,20 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
             BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_nov_4, ss4,normalize_factor)
             BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_nov_4, ss4,normalize_factor)
             l1_out_4 = BP_activations_out['l1']
-
     
             recon_fam_1 = vae.decoder_cropped(shape_out_1, color_out_1,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_1, 0))#
             #recon_nov_1 = vae.decoder_cropped(shape_out_novel_1, color_out_novel_1,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_1, 0))#
             recon_nov_1 = vae.decoder_skip_cropped(0, 0, 0, l1_out_1).cuda()
             recon_nov_1 = Ft.gaussian_blur(recon_nov_1, kernel_size=[3, 3], sigma=[1.0, 1.0])
+            #recon_nov_1  = torch.where(recon_nov_1  < 0.15, torch.zeros_like(recon_nov_1 ),recon_nov_1 )
+            #recon_nov_1 = torch.from_numpy(ndimage.median_filter(recon_nov_1.cpu().numpy(), size=(1,1,3,3))).to(recon_nov_1.device)
 
             recon_fam_4 = vae.decoder_cropped(shape_out_4, color_out_4,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_4, 0))#
             #recon_nov_4 = vae.decoder_cropped(shape_out_novel_4, color_out_novel_4,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_4, 0))#
             recon_nov_4 = vae.decoder_skip_cropped(0, 0, 0, l1_out_4).cuda()
+        
             recon_nov_4 = Ft.gaussian_blur(recon_nov_4, kernel_size=[3, 3], sigma=[1.0, 1.0])
-
+            #recon_nov_4  = torch.where(recon_nov_4  < 0.4, torch.zeros_like(recon_nov_4 ),recon_nov_4 )
 
             corr_fam_1 = batch_ssim(emnist_sample[:ss1], recon_fam_1)
             corr_nov_1 = batch_ssim(emnist_sample[:ss1], recon_nov_1)
@@ -1294,7 +1297,7 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         hybrid_H = composite_scene(holistic_H, obj_recon_H[0], torch.zeros_like(obj_recon_H[0]), device)
         hybrid_1hot_col.append(hybrid_H.view(bs, 3, 64, 64))
 
-        # hybrid holistic bg + 2 QuickDraw one-hots + 1 MNIST L1 skip:
+        # hybrid holistic bg + 2 QuickDraw one-hots + 1 fashion-MNIST L1 skip:
         BP_activations_oneHot_H = {'l1_item': [l1_act_item1.view(1, -1), 1],
                                 'object_1hot': [object_oneHot[1:].view(2, -1), 1],
                                 'color_1hot': [color_oneHot[1:].view(2, -1), 1],
@@ -1321,22 +1324,24 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         # reconstruct QuickDraw objects from one-hot at their retinal positions
         onehot_recon = vae.decoder_retinal_object(obj_from_BP_label_H, color_from_BP_label_H, thetas[1:], 0).sum(dim=0, keepdim=True)
 
-        # reconstruct MNIST item from L1 skip (28x28 crop), place at its retinal position
-        mnist_recon = vae.decoder_skip_cropped(0, 0, 0, BP_l1_item)
-        mnist_retinal = torch.zeros(1, 3, 64, 64).to(device)
+        # reconstruct fashion_MNIST item from L1 skip (28x28 crop), place at its retinal position
+        fashion_mnist_recon = vae.decoder_skip_cropped(0, 0, 0, BP_l1_item)
+        fashion_mnist_recon = Ft.gaussian_blur(fashion_mnist_recon , kernel_size=[3, 3], sigma=[1, 1])
+
+        fashion_mnist_retinal = torch.zeros(1, 3, 64, 64).to(device)
         pad_left = int(labels_1[2].item() - 14)
         pad_top = int(labels_1[3].item() - 14)
         pad_left = max(0, min(pad_left, 36))  # clamp to valid range (64-28=36)
         pad_top = max(0, min(pad_top, 36))
-        mnist_retinal[:, :, pad_top:pad_top+28, pad_left:pad_left+28] = mnist_recon
+        fashion_mnist_retinal[:, :, pad_top:pad_top+28, pad_left:pad_left+28] = fashion_mnist_recon
 
         # holistic background
         holistic_H = vae.decoder_skip_cropped(0, 0, 0, BP_l1_H)
         holistic_H = F.interpolate(holistic_H.view(1, 3, 28, 28), size=(64, 64), mode='bilinear', align_corners=False)
         holistic_H = Ft.gaussian_blur(holistic_H, kernel_size=[79, 79], sigma=[5.5, 5.5])
 
-        # composite: holistic bg → MNIST L1 → QuickDraw one-hot objects on top
-        hybrid_H = composite_scene(holistic_H, mnist_retinal[0], torch.zeros_like(mnist_retinal[0]), device)
+        # composite: holistic bg → fashion_MNIST L1 → QuickDraw one-hot objects on top
+        hybrid_H = composite_scene(holistic_H, fashion_mnist_retinal[0], torch.zeros_like(fashion_mnist_retinal[0]), device)
         hybrid_H = composite_scene(hybrid_H, onehot_recon[0], torch.zeros_like(onehot_recon[0]), device)
         hybrid_bitmask_col.append(hybrid_H.view(bs, 3, 64, 64))
 
@@ -1413,13 +1418,6 @@ def obj_scene_helper(vae, dataloaders, n, save_img, return_loss, bpsize, bpPorti
         brightness = orig.max(dim=1, keepdim=True).values
         fg_mask = (brightness > 0.01).float()
 
-        #losses = {
-        #    'holistic_no_BP': foreground_ssim(torch.cat(holistic_no_BP_col, 0), orig, fg_mask),
-        #    'holistic_BP': foreground_ssim(torch.cat(holistic_BP_col, 0), orig, fg_mask),
-        #    'latent_obj_holistic_bg': foreground_ssim(torch.cat(hybrid_col, 0), orig, fg_mask),
-        #    '1hot_obj_holistic_bg': foreground_ssim(torch.cat(hybrid_1hot_col, 0), orig, fg_mask),
-        #    'hybrid_obj': foreground_ssim(torch.cat(hybrid_bitmask_col, 0), orig, fg_mask)}
-        #return losses
 
         losses = {
             'holistic_no_BP': batch_ssim(torch.cat(holistic_no_BP_col, 0),orig),
@@ -1437,8 +1435,6 @@ def batch_ssim(pred, target, data_range=1.0):
     return sum(scores) / len(scores)
 
 
-
-
 @torch.no_grad()
 def fig_obj_scene_recon(vae: VAE_CNN, object_label, color_label, object_classifier, color_classifier, folder_path: str, load_data: bool = False):
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
@@ -1454,9 +1450,10 @@ def fig_obj_scene_recon(vae: VAE_CNN, object_label, color_label, object_classifi
     # holistic rep for background, lowpass filter average, latent representation for objects, reconstruct and layer
     # MSE for each reconstruction row over 1000 trials.
     quickdraw_target_set = [0, 2, 8, 10, 11]
-    #obj_1_transforms = {'retina': True, 'colorize': True, 'scale': False, 'target_set': quickdraw_target_set,
-    #                    'location_targets': {(-1, -1): list(range(0, s_classes + 1))}, 'colorize_background':'split'}
-    #obj_1_loader = Dataset('quickdraw', obj_1_transforms).get_loader(bs)
+    #novel stimulus
+    obj_1_transforms = {'retina': True, 'colorize': True, 'scale': False, 'target_set': [37],
+                        'location_targets': {(-1, -1): list(range(0, s_classes + 1))}, 'colorize_background':'split'}
+    obj_1_loader = Dataset('fashion_mnist', obj_1_transforms).get_loader(bs)
 
     obj_2_transforms = {'retina': True, 'colorize': True, 'scale': False, 'target_set': quickdraw_target_set,
                         'location_targets': {(-1, 1): list(range(0, s_classes + 1))}}
@@ -1465,12 +1462,6 @@ def fig_obj_scene_recon(vae: VAE_CNN, object_label, color_label, object_classifi
     obj_3_transforms = {'retina': True, 'colorize': True, 'scale': False, 'target_set': quickdraw_target_set,
                         'location_targets': {(1, 1): list(range(0, s_classes + 1))}}
     obj_3_loader = Dataset('quickdraw', obj_3_transforms).get_loader(bs)
-
-    #novel stimulus
-    obj_1_transforms = {'retina': True, 'colorize': True, 'scale': False, 'target_set': [37],
-                        'location_targets': {(-1, -1): list(range(0, 10))}, 'colorize_background':'split'}
-    #obj_1_loader = Dataset('mnist', obj_1_transforms).get_loader(bs)
-    obj_1_loader = Dataset('fashion_mnist', obj_1_transforms).get_loader(bs)
 
     dataloaders = (obj_1_loader, obj_2_loader, obj_3_loader, bs)
 
@@ -1481,7 +1472,7 @@ def fig_obj_scene_recon(vae: VAE_CNN, object_label, color_label, object_classifi
     for bpsize in [10000]:
         losses_dict[bpsize] = obj_scene_helper(vae, dataloaders, loss_trials, save_img=False, return_loss=True, bpsize=bpsize, bpPortion=bpPortion, object_label=object_label, color_label=color_label, object_classifier=object_classifier, color_classifier=color_classifier, folder_path=folder_path)
 
-    # TODO: new hybrid strat: present an atypical obj on bottom, store top 2 as labels, bottom as latents, w/ hol bg
+
     for bps in losses_dict:
         losses = losses_dict[bps]
         names = list(losses.keys())
@@ -1491,8 +1482,8 @@ def fig_obj_scene_recon(vae: VAE_CNN, object_label, color_label, object_classifi
         fig, ax = plt.subplots(figsize=(10, 6))
         bars = ax.bar(names, values, color='steelblue')
 
-        ax.set_ylabel('MSE Loss')
-        ax.set_title(f'MSE vs Reconstruction Method {loss_trials} Trials, BP size: {bps}')
+        ax.set_ylabel('SSIM score')
+        ax.set_title(f'SSIM score vs Reconstruction Method {loss_trials} Trials, BP size: {bps}')
         ax.set_xticklabels(names, rotation=45, ha='right')
         ax.grid(axis='y', alpha=0.3)
 
