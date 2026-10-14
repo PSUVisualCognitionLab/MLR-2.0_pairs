@@ -941,50 +941,55 @@ def fig_non_color_repeat_recon(vae: VAE_CNN, folder_path: str, load_data: bool =
     save_image(imgmatrixMap, f'{folder_path}figure_non_color_repeat_Map.png',  nrow=numimg,        normalize=False) #,range=(-1, 1))
 
 @torch.no_grad()
+@torch.no_grad()
+
 def percept_concept(vae: VAE_CNN, shape_label, s_classes, folder_path: str, load_data: bool = False):
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
-    mnist_loader = Dataset('mnist',{'retina':False, 'colorize':True}, train=True).get_loader(1)
+    mnist_iter = iter(Dataset('mnist',{'retina':False, 'colorize':True}, train=True).get_loader(1))
+    emnist_iter = iter(Dataset('emnist', {'retina':False, 'colorize':True}, train=True).get_loader(1))
+
     vals = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 
+
+    pairs = [
+        (6,  24),  # 6+O → forms a rounder 8-like shape
+        (15, 21),  # F+L → E  (F has top/mid bars, L adds the bottom bar)
+        (6,  9),   # 6+9 → 8  (top circle + bottom circle)
+    ]
+
     vae.eval()
-    label = 8 #35
-    percept_label = 3 #7
-    data_iter = iter(mnist_loader)
-    
-    target = 0
-    while target != percept_label:
-        data = next(data_iter)
-        img = data[0][0].cuda()
-        target = data[1][0][0].item()
-        img = img.view(1,3,28,28)
+   
+    for percept_label, label in pairs:
+        data_iter = emnist_iter if percept_label >= 10 else mnist_iter
+        target = -1
+        while target != percept_label:
+            data   = next(data_iter)
+            img    = data[0][0].to(device).view(1,3,28,28)
+            target = data[1][0][0].item()
 
-    # build one hot vectors to be passed to the label networks
-    onehot_label = F.one_hot(torch.tensor([label]).cuda(), num_classes=s_classes).float().cuda() # shape
+        onehot_label = F.one_hot(torch.tensor([label]).to(device), num_classes=s_classes).float()
+        z_shape_labels = shape_label(onehot_label, n=1)
+        activations    = vae.activations(img, False)
+        z_shape_img    = activations['shape']
+        z_color_img    = activations['color']
+        combined       = (z_shape_labels + z_shape_img) * 0.5
 
-    # generate shape latents from the labels n = noise
-    z_shape_labels = shape_label(onehot_label, n = 10)
-    activations = vae.activations(img.view(-1,3,28,28), False)
-    z_shape_img = activations['shape']
-    z_color_img = activations['color']       
+        percept_name = emnist_labels[percept_label]
+        concept_name = emnist_labels[label]
 
-    combined_z_shape = (z_shape_labels+z_shape_img)*(1/2)
+        save_image(vae.decoder_cropped(combined,       z_color_img), f'{folder_path}percept_concept_{percept_name}-{concept_name}.png')
+        save_image(vae.decoder_cropped(z_shape_labels, z_color_img), f'{folder_path}percept_concept_{concept_name}_label.png')
+        save_image(img, f'{folder_path}percept_{percept_name}.png')
+    # --- all identities reconstructed from labels only ---
+    label_recons = []
+    for lbl in range(s_classes):
+        onehot = F.one_hot(torch.tensor([lbl]).to(device), num_classes=s_classes).float()
+        z = shape_label(onehot, n=1)
+        label_recons.append(vae.decoder_shape(z))
 
-    # pass latents from label network through encoder
-    recon_shape_combined = vae.decoder_cropped(combined_z_shape, z_color_img, 0, 0)
-    recon_shape_label = vae.decoder_cropped(z_shape_labels, z_color_img, 0, 0)
-    
-    '''    #comb_img = torch.cat([comb_img, comb_img],0)
-    l1,l2,z_shape, z_color, z_location = activations(comb_img)
-
-    pred_ss = clf_shapeS.predict(z_shape.cpu())
-    pred_proba = clf_shapeS.predict_proba(z_shape.cpu())
-
-    recon_shape = vae.decoder_shape(z_shape, 0, 0)'''
-
-    save_image(recon_shape_combined,f'{folder_path}percept_concept_{target}-{label}.png') #8B, 8
-    save_image(recon_shape_label,f'{folder_path}percept_concept_{label}_label.png')
-    save_image(img,f'{folder_path}percept_{target}.png')
-
+    save_image(torch.cat(label_recons, 0),
+               f'{folder_path}label_recons_all.png',
+               nrow=s_classes, normalize=False, pad_value=0.6)
 
 @torch.no_grad()
 def fig_novel_representations(vae: VAE_CNN, folder_path: str, load_data: bool = False):

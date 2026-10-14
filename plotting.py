@@ -76,7 +76,6 @@ panel_dict = {"synthesis": lambda: figure_panels.synthesis(vae, vae_shape_labels
               "novel": lambda: figure_panels.novel(vae, simulation_folder_path),
               "compositional": lambda: figure_panels.compositional(vae, simulation_folder_path),
               "flexibility": lambda: figure_panels.flexibility(vae, simulation_folder_path),
-              "modality": lambda: figure_panels.modality(vae, vae_shape_labels, s_classes, simulation_folder_path),
               "scene": lambda: figure_panels.scene(vae, vae_object_labels, vae_color_labels, clf_objectS, clf_color, simulation_folder_path),
               "poster": lambda: figure_panels.poster(vae, simulation_folder_path),
               "allstims": lambda: figure_panels.allstims(vae, simulation_folder_path)

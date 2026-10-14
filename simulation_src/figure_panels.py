@@ -46,6 +46,8 @@ def generative(vae, shape_label, s_classes, color_label, c_classes, folder_path,
     folder_path = folder_path + "generative/"
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
+    
+    figures.percept_concept(vae, shape_label, s_classes, folder_path, load_data)
 
     figures.fig_generative_noise(vae, shape_label, s_classes, color_label, c_classes, folder_path, load_data)
 
@@ -103,13 +105,6 @@ def basic(vae, folder_path, load_data=False):
     figures.functionality_test(vae, 0, 0, 0, 0, folder_path)
     figures.recon_test(vae, folder_path)
 
-@torch.no_grad()
-def modality(vae, shape_label, s_classes, folder_path, load_data=False):
-    folder_path = folder_path + "modality/"
-    if not os.path.exists(folder_path):
-        os.mkdir(folder_path)
-        
-    figures.percept_concept(vae, shape_label, s_classes, folder_path, load_data)
 
 @torch.no_grad()
 def allstims(vae, folder_path, load_data=False):
