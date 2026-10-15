@@ -1836,115 +1836,126 @@ def functionality_test(vae: VAE_CNN, shape_label, s_classes, color_label, c_clas
             nrow=1, normalize=False)
 
 
-#CURRENTLY NOT USED
 @torch.no_grad()
-def fig_generative_interpolation(vae: VAE_CNN, shape_label, s_classes, color_label, c_classes, folder_path: str, load_data: bool = False):
-    pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
-    vae.eval()
-
-    if load_data is False:
-        print("generative noise plot")
-        #start with a letter and add noise to progressively walk from a green z to an orange p.  
-        bs = 2
-        x, y= 5, 5
-        num1 = 35  # Z
-        num2 = 25  # P
-        device = next(vae.parameters()).device
-        shape_label.to(device)
-        num_labels = F.one_hot(torch.tensor([num1, num2]).to(device), num_classes=s_classes).float().to(device) # shape
-        col_labels = F.one_hot(torch.tensor([1, 0]).to(device), num_classes=c_classes).float().to(device) # color
-        z_shapes = shape_label(num_labels, 1)  #shape latents for Z and P
-        z_colors = color_label(col_labels, 1)  #shape latents for Green and Orange
-
-        # shape / color noising x: shape, y: color
-        recon_crop = vae.decoder_cropped(z_shapes[0], z_colors[0])
-        shape_color_base = recon_crop[0]
-
-        shape_recons = []
-        color_recons = []
-        joint_recons = [shape_color_base]
-
-        z_shape = z_shapes[0].clone()
-        z_color = z_colors[0].clone()
-        n = 10
-        for i in range(0,n):
-            z_shape = z_shape + 0.99 * ((1)/n) * (z_shapes[1] - z_shapes[0]) + (0.0 * torch.randn_like(z_shape))
-            z_color = z_color + 0.99 * ((1)/n) * (z_colors[1] - z_colors[0]) + (0.2 * torch.randn_like(z_color))
-            recon_shape_m = vae.decoder_cropped(z_shape, z_colors[0])
-            recon_color_m = vae.decoder_cropped(z_shapes[0], z_color)
-            recon_crop_m = vae.decoder_cropped(z_shape, z_color)
-
-            shape_recons += [recon_shape_m]
-            color_recons += [recon_color_m]
-            joint_recons += [recon_crop_m]
-
-        recon_grid = build_gen_grid(joint_recons, shape_recons, color_recons, n)
-        data_to_pickle = {
-            "recon_grid": recon_grid,
-        }
-
-        joblib.dump(data_to_pickle, pkl_path)
-
-    else:
-        if not os.path.exists(pkl_path):
-            raise Exception(f"No data exists for plot: {folder_path}{log_function_name()}")
-        
-        # load plotting data
-        loaded_data = joblib.load(pkl_path)
-        recon_grid = loaded_data["recon_grid"]
-    
-    save_image(recon_grid, f'{folder_path}Interpolationwalk.png', pad_value=0.6)
-@torch.no_grad()
-def fig_generative_noise(vae: VAE_CNN, shape_label, s_classes, color_label, c_classes, folder_path: str, load_data: bool = False):
+def fig_generative_noise_1dPCA(vae: VAE_CNN, shape_label, s_classes, color_label, c_classes, folder_path: str, load_data: bool = False):
     vae.eval()
     device = next(vae.parameters()).device
+    n = 10
 
-    n = 10   # steps along each PC axis
-
-    # encode a mix of all shape identities to get real shape variance
-    loader = Dataset('emnist', {'retina': False, 'colorize': True}, train=True).get_loader(5000)
-    
-    imgs, _ = next(iter(loader))
-    imgs = imgs.to(device)
-    act = vae.activations(imgs, False)
-    z_shape_all = act['shape']   # (5000, shape_z_dim)
-    z_color_all = act['color']   # (5000, color_z_dim)
-
-    # PCA: center, then SVD to get principal components
-    z_shape_mean = z_shape_all.mean(0, keepdim=True)
-    z_color_mean = z_color_all.mean(0, keepdim=True)
-    # use a single real Z as the starting point rather than the mean
-
-    _, _, Vs = torch.pca_lowrank(z_shape_all - z_shape_mean, q=2)  # top 2 PCs for shape
-    _, _, Vc = torch.pca_lowrank(z_color_all - z_color_mean, q=2)  # top 2 PCs for color
-    
-    #now use a green z generated from the label netowrk
-    
-    num_label = F.one_hot(torch.tensor([35]).to(device), num_classes=s_classes).float()  # Z
-    col_label = F.one_hot(torch.tensor([1 ]).to(device), num_classes=c_classes).float()  # green
+    # base: green Z from label networks
+    num_label    = F.one_hot(torch.tensor([35]).to(device), num_classes=s_classes).float()
+    col_label    = F.one_hot(torch.tensor([1 ]).to(device), num_classes=c_classes).float()
     z_shape_base = shape_label(num_label, n=0)   # (1, shape_z_dim)
     z_color_base = color_label(col_label, n=0)   # (1, color_z_dim)
 
-    # PC1 of shape = direction of greatest variance in real Z latents
-    pc1_shape = Vs[:, 0]   # (shape_z_dim,)
-    pc1_color = Vc[:, 0]   # (color_z_dim,)
+    # compute PCA axes from a large real batch — gives meaningful directions to walk
+    loader = Dataset('emnist', {'retina': False, 'colorize': True}, train=True).get_loader(2000)
+    imgs, _ = next(iter(loader))
+    act     = vae.activations(imgs.to(device), False)
+    z_shape_all = act['shape']
+    z_color_all = act['color']
 
-    # walk along PC1 of shape and color separately and jointly
-    steps = torch.linspace(-5, 5, n).to(device)   # in units of std along the PC
+    _, _, Vs = torch.pca_lowrank(z_shape_all - z_shape_all.mean(0), q=1)
+    _, _, Vc = torch.pca_lowrank(z_color_all - z_color_all.mean(0), q=1)
+    pc_shape = Vs[:, 0]   # dominant shape direction
+    pc_color = Vc[:, 0]   # dominant color direction
 
-    shape_recons, color_recons, joint_recons = [], [], []
-    joint_recons.append(vae.decoder_cropped(z_shape_base, z_color_base))  # clean center
+    # step range in units of std along each PC
+    shape_std = ((z_shape_all - z_shape_all.mean(0)) @ pc_shape).std()
+    color_std = ((z_color_all - z_color_all.mean(0)) @ pc_color).std()
+    shape_steps = torch.linspace(0, shape_std * 3, n).to(device)
+    color_steps = torch.linspace(0, color_std * 3, n).to(device)
 
-    for s in steps:
-        z_s = z_shape_base + s * pc1_shape.unsqueeze(0)
-        z_c = z_color_base + s * pc1_color.unsqueeze(0)
-        #z_s = z_shape_base
-        shape_recons.append(vae.decoder_cropped(z_s, z_color_base))  # color fixed at mean
-        color_recons.append(vae.decoder_cropped(z_shape_base, z_c))  # shape fixed at mean
-        joint_recons.append(vae.decoder_cropped(z_s, z_c))           # both vary
+    # top row: walk along PC1 of shape, color fixed at green Z
+    shape_recons = []
+    for s in shape_steps:
+        z_s = z_shape_base + s * pc_shape.unsqueeze(0)
+        shape_recons.append(vae.decoder_cropped(z_s, z_color_base))
+
+    # left col: walk along PC1 of color, shape fixed at Z
+    color_recons = []
+    for s in color_steps:
+        z_c = z_color_base + s * pc_color.unsqueeze(0)
+        color_recons.append(vae.decoder_cropped(z_shape_base, z_c))
+
+    # diagonal: both walk together
+    joint_recons = [vae.decoder_cropped(z_shape_base, z_color_base)]  # clean base
+    for s_s, s_c in zip(shape_steps, color_steps):
+        z_s = z_shape_base + s_s * pc_shape.unsqueeze(0)
+        z_c = z_color_base + s_c * pc_color.unsqueeze(0)
+        joint_recons.append(vae.decoder_cropped(z_s, z_c))
 
     recon_grid = build_gen_grid(joint_recons, shape_recons, color_recons, n)
-    save_image(recon_grid, f'{folder_path}sample.png', pad_value=0.6)
+    save_image(recon_grid, f'{folder_path}noisewalk.png', pad_value=0.6)
+
+
+@torch.no_grad()
+def fig_generative_noise_2DPCA(vae: VAE_CNN, shape_label, s_classes, color_label, c_classes, folder_path: str, load_data: bool = False):
+    vae.eval()
+    device = next(vae.parameters()).device
+    n = 10
+    step_size = 1   # fraction of std per step — tune this
+
+    # base: green Z from label networks
+    num_label    = F.one_hot(torch.tensor([35]).to(device), num_classes=s_classes).float()
+    col_label    = F.one_hot(torch.tensor([1 ]).to(device), num_classes=c_classes).float()
+    z_shape_base = shape_label(num_label, n=0)
+    z_color_base = color_label(col_label, n=0)
+
+    # compute 2D PCA manifolds from real encoded images
+    loader = Dataset('emnist', {'retina': False, 'colorize': True}, train=True).get_loader(2000)
+    imgs, _ = next(iter(loader))
+    act = vae.activations(imgs.to(device), False)
+    z_shape_all = act['shape']
+    z_color_all = act['color']
+
+    shape_mean = z_shape_all.mean(0)
+    color_mean = z_color_all.mean(0)
+
+    _, _, Vs = torch.pca_lowrank(z_shape_all - shape_mean, q=2)
+    _, _, Vc = torch.pca_lowrank(z_color_all - color_mean, q=2)
+    spc1, spc2 = Vs[:, 0], Vs[:, 1]   # shape manifold axes
+    cpc1, cpc2 = Vc[:, 0], Vc[:, 1]   # color manifold axes
+
+    # std along each PC — sets the scale of a meaningful step
+    s_std1 = ((z_shape_all - shape_mean) @ spc1).std().item()
+    s_std2 = ((z_shape_all - shape_mean) @ spc2).std().item()
+    c_std1 = ((z_color_all - color_mean) @ cpc1).std().item()
+    c_std2 = ((z_color_all - color_mean) @ cpc2).std().item()
+
+    # random walk in 2D PCA space: each step is a random displacement
+    # along PC1 and PC2, scaled by the real data std
+    def pca_walk(base, mean, pc1, pc2, std1, std2):
+        centered = base - mean
+        s1 = (centered @ pc1).item()
+        s2 = (centered @ pc2).item()
+        residual = centered - s1 * pc1 - s2 * pc2
+
+        # pick one random direction in the 2D plane and march along it
+        direction = torch.randn(2).to(device)
+        direction = direction / direction.norm()   # unit vector in 2D PCA space
+
+        zs = []
+        for i in range(n):
+            ds1 = direction[0].item() * step_size * std1 * i
+            ds2 = direction[1].item() * step_size * std2 * i
+            zs.append((mean + (s1 + ds1) * pc1 + (s2 + ds2) * pc2 + residual).unsqueeze(0))
+        return zs
+
+    shape_walk = pca_walk(z_shape_base, shape_mean, spc1, spc2, s_std1, s_std2)
+    color_walk = pca_walk(z_color_base, color_mean, cpc1, cpc2, c_std1, c_std2)
+
+    # decode each trajectory
+    print(z_color_base)
+    shape_recons = [vae.decoder_cropped(z, z_color_base) for z in shape_walk]
+    color_recons = [vae.decoder_cropped(z_shape_base, z) for z in color_walk]
+
+    joint_recons = [vae.decoder_cropped(z_shape_base, z_color_base)]  # clean start
+    for zs, zc in zip(shape_walk, color_walk):
+        joint_recons.append(vae.decoder_cropped(zs, zc))
+
+    recon_grid = build_gen_grid(joint_recons, shape_recons, color_recons, n)
+    save_image(recon_grid, f'{folder_path}noisewalk.png', pad_value=0.6)
 
 @torch.no_grad()
 def fig_binding_addressability(vae: VAE_CNN, color_classifier, folder_path: str, load_data: bool = False):

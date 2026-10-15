@@ -49,7 +49,7 @@ def generative(vae, shape_label, s_classes, color_label, c_classes, folder_path,
     
     figures.percept_concept(vae, shape_label, s_classes, folder_path, load_data)
 
-    figures.fig_generative_noise(vae, shape_label, s_classes, color_label, c_classes, folder_path, load_data)
+    figures.fig_generative_noise_2DPCA(vae, shape_label, s_classes, color_label, c_classes, folder_path, load_data)
 
 @torch.no_grad()
 def synthesis(vae, shape_label, s_classes, shape_classifier, folder_path, load_data=False):
