@@ -953,25 +953,31 @@ def percept_concept(vae: VAE_CNN, shape_label, s_classes, folder_path: str, load
 
     pairs = [
         (6,  24),  # 6+O → forms a rounder 8-like shape
-        (15, 21),  # F+L → E  (F has top/mid bars, L adds the bottom bar)
-        (6,  9),   # 6+9 → 8  (top circle + bottom circle)
+        (21, 15),  # F+L → E  (F has top/mid bars, L adds the bottom bar)
+        (9,  6),   # 6+9 → 8  (top circle + bottom circle)
     ]
 
+    pairs = [
+        (6,  24,  0.0,  0.0, 1.0),   # digit 3 + concept 8,  centered
+        (21, 15,  0.3,  0.0, 1.0),   # S + concept 8,         shift right
+        (6, 9, 0.0,  0.2, 0.9),   # P + concept A,         shift down, slightly smaller
+    ]
     vae.eval()
-   
-    for percept_label, label in pairs:
-        data_iter = emnist_iter if percept_label >= 10 else mnist_iter
-        target = -1
-        while target != percept_label:
-            data   = next(data_iter)
-            img    = data[0][0].to(device).view(1,3,28,28)
-            target = data[1][0][0].item()
-
-        onehot_label = F.one_hot(torch.tensor([label]).to(device), num_classes=s_classes).float()
-        z_shape_labels = shape_label(onehot_label, n=1)
+    #loop through the pairs
+    for percept_label, label, tx, ty, s  in pairs:
+        if percept_label >= 10:
+            loader = Dataset('emnist', {'retina': False, 'colorize': True, 'target_set': [percept_label]}, train=True).get_loader(1)
+        else:
+            loader = Dataset('mnist',  {'retina': False, 'colorize': True, 'target_set': [percept_label]}, train=True).get_loader(1)
+        #show the model a visual shape, get the latent
+        img = next(iter(loader))[0][0].to(device).view(1, 3, 28, 28)
         activations    = vae.activations(img, False)
         z_shape_img    = activations['shape']
         z_color_img    = activations['color']
+
+        #now generate a different object with a label
+        onehot_label = F.one_hot(torch.tensor([label]).to(device), num_classes=s_classes).float()
+        z_shape_labels = shape_label(onehot_label, n=1)
         combined       = (z_shape_labels + z_shape_img) * 0.5
 
         percept_name = emnist_labels[percept_label]
@@ -1079,43 +1085,63 @@ def fig_novel_representations(vae: VAE_CNN, folder_path: str, load_data: bool = 
  #TODO: rotated V in an O to form clock, J under rotated D to form an umbrella
 
 @torch.no_grad()
+#take a stimulus and make a series of modifications
+@torch.no_grad()
 def fig_retinal_mod(vae: VAE_CNN, folder_path: str, load_data: bool = False):
-    pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
-
     vae.eval()
     bs = 10
-    mnist_transforms = {'retina':True, 'colorize':True, 'scale':True}
-    emnist_loader= Dataset('emnist', mnist_transforms).get_loader(bs)
-    
-    dataiter_emnist = iter(emnist_loader)
-    data, labels = next(dataiter_emnist)
+
+    emnist_loader = Dataset('emnist', {'retina': True, 'colorize': True, 'scale': True,
+                                       'target_set': list(range(10, 36))}, train=True).get_loader(bs)
+    dataiter = iter(emnist_loader)
+    data, _ = next(dataiter)
     data = data[0].cuda()
 
-    activations = vae.activations(data, True)
+    act      = vae.activations(data, True)
+    shape    = act['shape']
+    color    = act['color']
+    scale    = act['scale']
+    location = act['location']
+    theta    = torch.cat([scale, location], 1)
+
+    def make_theta(s=None, loc=None):
+        s   = s   if s   is not None else scale
+        loc = loc if loc is not None else location
+        return torch.cat([s, loc], 1)
+
+    # scale sweep: smaller → larger parametric 
+    scale_rows = []
+    for sv in [0.5, 1.4, 1.8]:
+        s = torch.full((bs, 1), sv).cuda()
+        scale_rows.append(vae.decoder_retinal(shape, color, make_theta(s=s)))
+
+    # location sweep: left → right (y held at 0)
+    loc_rows = []
+    for lx in [-0.8, 0.2, 0.8]:
+        loc = torch.tensor([lx, 0.0] * bs).view(bs, 2).cuda()
+        loc_rows.append(vae.decoder_retinal(shape, color, make_theta(loc=loc)))
+
+    # color sweep: encode a fresh batch, broadcast each color across all items 
+    data2, _ = next(dataiter)
+    color_samples = vae.activations(data2[0].cuda(), True)['color']
+    color_rows = []
+    for i in range(3):
+        c = color_samples[i].unsqueeze(0).expand(bs, -1)
+        color_rows.append(vae.decoder_retinal(shape, c, theta))
+
+    all_rows = (
+        [data,                                     # row 0: originals
+         vae.decoder_retinal(shape, color, theta)] # row 1: identity recon
+        + scale_rows                               # rows 2-6: scale sweep
+        + loc_rows                                 # rows 7-11: location sweep
+        + color_rows                               # rows 12-16: color sweep
+    )
+
+    save_image(torch.cat(all_rows, 0),
+               f'{folder_path}figure_retinal_mod.png',
+               nrow=bs, normalize=False, pad_value=0.6)
+
     
-    shape = activations['shape']
-    color = activations['color']
-    scale = activations['scale']
-    location = activations['location']
-
-    mod_location = torch.tensor([-0.4, -0.4] * bs).view(bs,2).cuda()
-    mod_scale = torch.tensor([0.8] * bs).view(bs,1).cuda()
-
-    theta = torch.cat([scale, location], 1)
-    theta_mod_loc = torch.cat([scale, mod_location], 1)
-    theta_mod_scale = torch.cat([mod_scale, location], 1)
-    theta_mod_both = torch.cat([mod_scale, mod_location], 1)
-
-    recon = vae.decoder_retinal(shape, color, theta)
-    recon_mod_loc = vae.decoder_retinal(shape, color, theta_mod_loc)
-    recon_mod_scale = vae.decoder_retinal(shape, color, theta_mod_scale)
-    recon_mod_both = vae.decoder_retinal(shape, color, theta_mod_both)
-
-    save_image(
-        torch.cat([data, recon, recon_mod_scale, recon_mod_loc, recon_mod_both], 0),
-        f'{folder_path}figure_retinal_mod.png', pad_value=0.6,
-        nrow=bs, normalize=False)
-
 @torch.no_grad()
 def recon_test(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
