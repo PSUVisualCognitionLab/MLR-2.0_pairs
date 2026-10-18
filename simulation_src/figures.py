@@ -1076,13 +1076,10 @@ def fig_novel_representations(vae: VAE_CNN, folder_path: str, load_data: bool = 
         imgmatrixMap= torch.cat([imgmatrixMap,retrievals])
     
     store2 = []
-    
-
     #save an image showing:  original images, reconstructions directly from L1,  from L1 BP, from L1 BP through bottleneck, from maps BP
     save_image(torch.cat([imgs[0: numimg].view(numimg, 3, 28, imgsize), pre_bp, imgmatrixL1skip, imgmatrixL1noskip, imgmatrixMap], 0), f'{folder_path}fig_novel_rep.png',
             nrow=numimg,            normalize=False,)
 
- #TODO: rotated V in an O to form clock, J under rotated D to form an umbrella
 
 @torch.no_grad()
 #take a stimulus and make a series of modifications
@@ -1090,7 +1087,7 @@ def fig_novel_representations(vae: VAE_CNN, folder_path: str, load_data: bool = 
 def fig_retinal_mod(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     vae.eval()
     bs = 10
-
+    #generate a random object for each column in the figure and extract its features
     emnist_loader = Dataset('emnist', {'retina': True, 'colorize': True, 'scale': True,
                                        'target_set': list(range(10, 36))}, train=True).get_loader(bs)
     dataiter = iter(emnist_loader)
@@ -1111,13 +1108,13 @@ def fig_retinal_mod(vae: VAE_CNN, folder_path: str, load_data: bool = False):
 
     # scale sweep: smaller → larger parametric 
     scale_rows = []
-    for sv in [0.5, 1.4, 1.8]:
+    for sv in [0.5, 1.3]:
         s = torch.full((bs, 1), sv).cuda()
         scale_rows.append(vae.decoder_retinal(shape, color, make_theta(s=s)))
 
     # location sweep: left → right (y held at 0)
     loc_rows = []
-    for lx in [-0.8, 0.2, 0.8]:
+    for lx in [-0.6, 0.6]:
         loc = torch.tensor([lx, 0.0] * bs).view(bs, 2).cuda()
         loc_rows.append(vae.decoder_retinal(shape, color, make_theta(loc=loc)))
 
@@ -1125,7 +1122,7 @@ def fig_retinal_mod(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     data2, _ = next(dataiter)
     color_samples = vae.activations(data2[0].cuda(), True)['color']
     color_rows = []
-    for i in range(3):
+    for i in range(2):
         c = color_samples[i].unsqueeze(0).expand(bs, -1)
         color_rows.append(vae.decoder_retinal(shape, c, theta))
 
@@ -1535,39 +1532,40 @@ def visual_synthesis_helper(vae: VAE_CNN, num1, num2, theta, bs, shape_label: VA
     letter2 = emnist_labels[num2]
     device = next(vae.parameters()).device
     shape_label.to(device)
+    # 1. generate shape latents from one-hot labels through the label network
     num_labels = F.one_hot(torch.tensor([num1, num2]).to(device), num_classes=s_classes).float().to(device) # shape
-    z_shape = shape_label(num_labels, 8)
+    z_shape = shape_label(num_labels, 10)
+
+    # 2. decode each letter onto the retina with its specific theta
     recon_crop = vae.decoder_shape(z_shape)    
     recon = vae.decoder_retinal(z_shape, 0, theta, 'shape')
-
     img1 = recon[0]
     img2 = recon[1]
+    
+    # 3. add the two retinal images together
     comb_img = torch.clamp(img1 + img2, 0, 0.5) * 1.3
+    # 4. pass the composite back through the encoder as a retinal image
     comb_img = comb_img.view(1,3,64,64)
 
     activations = vae.activations(comb_img, True, None, 'object')
 
+    # 5. classify the object latent
     pred_ss = object_classifier.predict(activations['object'].cpu())
     out_pred = pred_ss[0]    
-
+    recon_object = vae.decoder_retinal_object(activations['object'], activations['color'], activations['theta'], 0)
     if save_images:
-        recon_shape = vae.decoder_object(activations['object'], 0, 0)
-        recon_shape_retinal = vae.decoder_retinal_object(activations['object'], activations['color'], activations['theta'], 0)
-        save_image(comb_img, f'{folder_path}{letter1}_{letter2}_sim.png')
-        save_image(recon_shape, f'{folder_path}{letter1}_{letter2}_sim_recon.png')
-        save_image(recon_shape_retinal, f'{folder_path}{letter1}_{letter2}_sim_recon_retinal.png')
-        save_image(recon_crop, f'{folder_path}{letter1}_{letter2}_crop_recon.png')
+#        recon_shape_retinal = vae.decoder_retinal_object(activations['object'], activations['color'], activations['theta'], 0)
+        save_image(comb_img, f'{folder_path}{letter1}_{letter2}_assembledobject.png')
+        save_image(recon_object, f'{folder_path}{letter1}_{letter2}_reconstructedobject.png')
+        save_image(recon_crop, f'{folder_path}{letter1}_{letter2}_pairfromLabelNetwork.png')
         save_image(img1, f'{folder_path}{letter1}.png')
         save_image(img2, f'{folder_path}{letter2}.png')
         save_image(activations['stn_out'], f'{folder_path}stn_out.png')
-
-    return out_pred
-
+    return out_pred, comb_img.squeeze(0)
 
 @torch.no_grad()
 def fig_visual_synthesis_umbrella(vae: VAE_CNN, shape_label, s_classes, object_classifier, folder_path: str, load_data: bool = False):
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
-    #TODO: rotated V in an O to form clock, J under rotated D to form an umbrella
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
     vae.eval()
@@ -1581,10 +1579,24 @@ def fig_visual_synthesis_umbrella(vae: VAE_CNN, shape_label, s_classes, object_c
     theta = torch.cat([scale, location, rotation], 1)
 
     preds = defaultdict(int)
+
+    all_composites = []
+    preds = defaultdict(int)
     trial_count = 500
     for i in range(trial_count):
-        out_pred = visual_synthesis_helper(vae, num1, num2, theta, bs, shape_label, s_classes, object_classifier, folder_path, save_images= i==0)
+        out_pred, comb_img = visual_synthesis_helper(vae, num1, num2, theta, bs, shape_label, s_classes, object_classifier, folder_path, save_images=i==0)
         preds[out_pred] += 1
+        all_composites.append(comb_img)
+
+    # stack and compare
+    all_imgs = torch.stack(all_composites)   # (500, 3, 64, 64)
+    mean_img = all_imgs.mean(0)
+    std_img  = all_imgs.std(0)
+    print(f"Pixel std across trials: min={std_img.min():.6f} max={std_img.max():.6f} mean={std_img.mean():.6f}")
+
+    save_image(torch.cat([all_imgs[:25].view(25,3,64,64), mean_img.unsqueeze(0), std_img.unsqueeze(0) / std_img.max()], 0),
+               f'{folder_path}variation_across_trials.png', nrow=27, normalize=False, pad_value=0.6)
+
 
     accuracy = preds[object_names.index('umbrella')] / trial_count
     with open(f"{folder_path}results.txt", "w") as f:
@@ -1595,7 +1607,6 @@ def fig_visual_synthesis_umbrella(vae: VAE_CNN, shape_label, s_classes, object_c
 @torch.no_grad()
 def fig_visual_synthesis_clock(vae: VAE_CNN, shape_label, s_classes, object_classifier, folder_path: str, load_data: bool = False):
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
-    #TODO: rotated V in an O to form clock, J under rotated D to form an umbrella
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
     vae.eval()
@@ -1610,9 +1621,26 @@ def fig_visual_synthesis_clock(vae: VAE_CNN, shape_label, s_classes, object_clas
 
     preds = defaultdict(int)
     trial_count = 500
+    
+    all_composites = []
+    preds = defaultdict(int)
+    trial_count = 500
     for i in range(trial_count):
-        out_pred = visual_synthesis_helper(vae, num1, num2, theta, bs, shape_label, s_classes, object_classifier, folder_path, save_images= i==0)
+        out_pred, comb_img = visual_synthesis_helper(vae, num1, num2, theta, bs, shape_label, s_classes, object_classifier, folder_path, save_images=i==0)
         preds[out_pred] += 1
+        all_composites.append(comb_img)
+
+    # stack and compare
+    all_imgs = torch.stack(all_composites)   # (500, 3, 64, 64)
+    mean_img = all_imgs.mean(0)
+    std_img  = all_imgs.std(0)
+    print(f"Pixel std across trials: min={std_img.min():.6f} max={std_img.max():.6f} mean={std_img.mean():.6f}")
+
+    save_image(torch.cat([all_imgs[:25].view(25,3,64,64), mean_img.unsqueeze(0), std_img.unsqueeze(0) / std_img.max()], 0),
+               f'{folder_path}variation_across_trials.png', nrow=27, normalize=False, pad_value=0.6)
+
+
+
 
     accuracy = preds[object_names.index('clock')] / trial_count
     with open(f"{folder_path}results.txt", "w") as f:
@@ -1623,7 +1651,6 @@ def fig_visual_synthesis_clock(vae: VAE_CNN, shape_label, s_classes, object_clas
 @torch.no_grad()
 def fig_visual_synthesis_boat(vae: VAE_CNN, shape_label, s_classes, object_classifier, folder_path: str, load_data: bool = False):
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
-    #TODO: rotated V in an O to form clock, J under rotated D to form an umbrella
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
     
@@ -1638,10 +1665,26 @@ def fig_visual_synthesis_boat(vae: VAE_CNN, shape_label, s_classes, object_class
     theta = torch.cat([scale, location, rotation], 1)
 
     preds = defaultdict(int)
+ 
+    all_composites = []
+    preds = defaultdict(int)
     trial_count = 500
     for i in range(trial_count):
-        out_pred = visual_synthesis_helper(vae, num1, num2, theta, bs, shape_label, s_classes, object_classifier, folder_path, save_images= i==0)
+        out_pred, comb_img = visual_synthesis_helper(vae, num1, num2, theta, bs, shape_label, s_classes, object_classifier, folder_path, save_images=i==0)
         preds[out_pred] += 1
+        all_composites.append(comb_img)
+
+    # stack and compare
+    all_imgs = torch.stack(all_composites)   # (500, 3, 64, 64)
+    mean_img = all_imgs.mean(0)
+    std_img  = all_imgs.std(0)
+    print(f"Pixel std across trials: min={std_img.min():.6f} max={std_img.max():.6f} mean={std_img.mean():.6f}")
+
+    save_image(torch.cat([all_imgs[:25].view(25,3,64,64), mean_img.unsqueeze(0), std_img.unsqueeze(0) / std_img.max()], 0),
+               f'{folder_path}variation_across_trials.png', nrow=27, normalize=False, pad_value=0.6)
+
+
+
 
     accuracy = preds[object_names.index('sailboat')] / trial_count
     with open(f"{folder_path}results.txt", "w") as f:
