@@ -1582,7 +1582,7 @@ def fig_visual_synthesis_umbrella(vae: VAE_CNN, shape_label, s_classes, object_c
 
     all_composites = []
     preds = defaultdict(int)
-    trial_count = 500
+    trial_count = 5000
     for i in range(trial_count):
         out_pred, comb_img = visual_synthesis_helper(vae, num1, num2, theta, bs, shape_label, s_classes, object_classifier, folder_path, save_images=i==0)
         preds[out_pred] += 1
@@ -1615,12 +1615,12 @@ def fig_visual_synthesis_clock(vae: VAE_CNN, shape_label, s_classes, object_clas
     num2 = 31
 
     location = torch.tensor([[-0.2, 0.0], [0.05, 0.0]]).view(bs,2).to(device)
-    scale = torch.tensor([[3.4], [0.5]]).view(bs,1).to(device)
-    rotation = torch.tensor([[-0.4], [0.4]]).view(bs,1).to(device)
+    scale = torch.tensor([[3.4], [0.85]]).view(bs,1).to(device)
+    rotation = torch.tensor([[0], [0.4]]).view(bs,1).to(device)
     theta = torch.cat([scale, location, rotation], 1)
 
     preds = defaultdict(int)
-    trial_count = 500
+    trial_count = 5000
     
     all_composites = []
     preds = defaultdict(int)
@@ -1668,7 +1668,7 @@ def fig_visual_synthesis_boat(vae: VAE_CNN, shape_label, s_classes, object_class
  
     all_composites = []
     preds = defaultdict(int)
-    trial_count = 500
+    trial_count = 5000
     for i in range(trial_count):
         out_pred, comb_img = visual_synthesis_helper(vae, num1, num2, theta, bs, shape_label, s_classes, object_classifier, folder_path, save_images=i==0)
         preds[out_pred] += 1
