@@ -2016,6 +2016,7 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     #used in the interference panel
         #demonstrates that the same stimulus when reconstructed through L1 accumulates interference more quickly..
             #except that the metrics don't support this, even though its visually quite bad
+            #this is labeled as novel but it's not novel, we just L1 for the familiar stimuli
 
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
     vae.eval()
@@ -2034,24 +2035,13 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
         test_loader_mnist = Dataset('mnist',{'colorize':True}, train=True).get_loader(numimg)
         test_loader_emnist = Dataset('emnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[10, 11, 12, 13, 14, 15]}, train=True).get_loader(numimg)
 
-
-        #load in some examples of Bengali Characters
-        '''for i in range (1,7):
-            color = Colorize_specific(random.randint(0,9))
-            img = Image.open(f'data/current_bengali/{i}_thick.png')
-            img_new = convert_tensor(color(img))
-            
-            all_imgs.append(img_new)
-        all_imgs = torch.stack(all_imgs)
-        imgs = all_imgs.view(-1, 3, imgsize, imgsize).cuda()   ''' 
-
         dataiter_mnist = iter(test_loader_mnist)
         dataiter_emnist = iter(test_loader_emnist)
         fam_1 = []
         nov_1 = []
         fam_4 = []
         nov_4 = []
-        trialcount = 1000
+        trialcount = 10
         for count in range(0,trialcount):
             data_mnist, labels = next(dataiter_mnist)
             data_emnist, labels = next(dataiter_emnist)
@@ -2119,10 +2109,10 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
             corr_nov_1 = batch_ssim(emnist_sample[:ss1], recon_nov_1)
             corr_fam_4 = batch_ssim(emnist_sample, recon_fam_4)
             corr_nov_4 = batch_ssim(emnist_sample, recon_nov_4)
-#            corr_fam_1 = compute_correlation(emnist_sample[:ss1], recon_fam_1).item()
-#            corr_nov_1 = compute_correlation(emnist_sample[:ss1], recon_nov_1).item()
-#            corr_fam_4 = compute_correlation(emnist_sample, recon_fam_4).item()
-#            corr_nov_4 = compute_correlation(emnist_sample, recon_nov_4).item()
+            #corr_fam_1 = compute_correlation(emnist_sample[:ss1], recon_fam_1).item()
+            #corr_nov_1 = compute_correlation(emnist_sample[:ss1], recon_nov_1).item()
+            #corr_fam_4 = compute_correlation(emnist_sample, recon_fam_4).item()
+            #corr_nov_4 = compute_correlation(emnist_sample, recon_nov_4).item()
 
             fam_1 += [corr_fam_1]
             nov_1 += [corr_nov_1]
@@ -2175,11 +2165,11 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
 
     plt.figure()
 
-    sns.lineplot(
-        x=[ss1, ss4],
-        y=[corr_nov_1, corr_nov_4],
-        label='novel images (L1)'
-    )
+#    sns.lineplot(
+#        x=[ss1, ss4],
+#        y=[corr_nov_1, corr_nov_4],
+#        label='novel images (L1)'
+#    )
 
     sns.lineplot(
         x=[ss1, ss4],
@@ -2188,8 +2178,8 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     )
 
     plt.xlabel('set size')
-    plt.ylabel('r')
-    plt.title('Set Size vs. Reconstruction Correlation')
+    plt.ylabel('SSIM')
+    plt.title('Set Size vs. Reconstruction Quality')
     plt.legend()
 
     plt.savefig(f'{folder_path}efficient_recon.png')
@@ -2197,7 +2187,7 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
 
 
 def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
-    #used in the interference panel
+    #used in the interference panel.  Loads up memories with squares at different locations
     test_loader = cycle(dataset.get_loader(numimg))
     dataiter = iter(test_loader)
     #bpsize = 10000        #size of the binding pool
@@ -2210,13 +2200,12 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
     correct_token_chosen_err = []
     token_swap = 0
     swap_count = 0
-    trial_count = 1000
+    trial_count = 500
     for _ in range(trial_count):
-        crop_imgs = next(dataiter)[0].cuda()
+        crop_imgs = next(dataiter)[0].cuda()  #grab some squares
 
         imgs = torch.zeros(numimg,3,64,64).cuda()
         locations = sample_points(64 - imgsize, 64 - imgsize, k=numimg, min_dist=10)
-        
         colors = random.sample(range(10), numimg)
         for i in range(numimg):
             x, y = locations[i]
@@ -2227,7 +2216,7 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
             frame = convert_tensor(colorizer(convert_image(imgs[i].cpu())))
             imgs[i] = frame.cuda()
         
-        excluded_colors = colors.copy()
+
         crop_imgs_ex = next(dataiter)[0].cuda()
         imgs_ex = torch.zeros(numimg,3,64,64).cuda()
         for i in range(numimg):
@@ -2256,7 +2245,7 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
                              'color': [color_act.view(numimg,-1), 1],
                              'location': [location_act.view(numimg,-1), 1]}
         
-        #now store digits
+        #now store items
         BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_factor)
         
         BPOut_cued = BPOut.clone()
@@ -2382,14 +2371,14 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     sns.lineplot(x=range(1, 8), y=token_swap_rates)
     plt.xlabel('Number of items')
     plt.ylabel('Token swap rate')
-    plt.savefig(f'{folder_path}token_swap_rate.png')
+    plt.savefig(f'{folder_path}token_swap_rate.png',bbox_inches="tight")
     plt.close()
     
     # % the correct token is selected but the incorrect square is chosen
     sns.lineplot(x=range(1, 8), y=color_swap_rates)
     plt.xlabel('Number of items')
     plt.ylabel('Feature swap rate')
-    plt.savefig(f'{folder_path}feature_swap_rate.png')
+    plt.savefig(f'{folder_path}feature_swap_rate.png',bbox_inches="tight")
     plt.close()
 
     # error between selected color and true color  
@@ -2399,7 +2388,7 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     plt.xlabel('Number of items')
     plt.ylabel('SSIM color vector')
     plt.legend()
-    plt.savefig(f'{folder_path}feature_error.png')
+    plt.savefig(f'{folder_path}feature_error.png',bbox_inches="tight")
     plt.close()
 
 @torch.no_grad()
