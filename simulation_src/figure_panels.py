@@ -94,7 +94,7 @@ def poster(vae, folder_path, load_data=False):
         os.mkdir(folder_path)
 
     figures.fig_simultaneous_vs_sequential(vae, folder_path, load_data)
-    #figures.fig_efficient_rep(vae, folder_path) #WORKING
+    figures.fig_efficient_rep(vae, folder_path) #WORKING
 
 @torch.no_grad()
 def basic(vae, folder_path, load_data=False):

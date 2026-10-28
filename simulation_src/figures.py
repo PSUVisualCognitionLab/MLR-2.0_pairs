@@ -444,191 +444,6 @@ def fig_simultaneous_vs_sequential(vae: VAE_CNN, folder_path: str, load_data: bo
     plt.savefig(f'{folder_path}cd_sim_vs_seq_r.png')
     plt.close()
 
-@torch.no_grad()
-def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
-    #used in the interference panel
-        #demonstrates that the same stimulus when reconstructed through L1 accumulates interference more quickly..
-            #Except it's not working
-
-    pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
-    vae.eval()
-
-    if load_data is False:
-        print('generating Figure efficient reconstruction plot')
-        retina_size = 100
-        imgsize = 28
-        #bpsize = 10000         #size of the binding pool
-        #token_overlap = 0.3
-        bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
-        numimg = 7
-        ss1 = 1
-        ss4 = 4
-        #make the data loader
-        test_loader_mnist = Dataset('mnist',{'colorize':True}, train=True).get_loader(numimg)
-        test_loader_emnist = Dataset('emnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[10, 11, 12, 13, 14, 15]}, train=True).get_loader(numimg)
-
-
-        #load in some examples of Bengali Characters
-        '''for i in range (1,7):
-            color = Colorize_specific(random.randint(0,9))
-            img = Image.open(f'data/current_bengali/{i}_thick.png')
-            img_new = convert_tensor(color(img))
-            
-            all_imgs.append(img_new)
-        all_imgs = torch.stack(all_imgs)
-        imgs = all_imgs.view(-1, 3, imgsize, imgsize).cuda()   ''' 
-
-        dataiter_mnist = iter(test_loader_mnist)
-        dataiter_emnist = iter(test_loader_emnist)
-        fam_1 = []
-        nov_1 = []
-        fam_4 = []
-        nov_4 = []
-
-        for count in range(0,1000):
-            data_mnist, labels = next(dataiter_mnist)
-            data_emnist, labels = next(dataiter_emnist)
-            #data_emnist = imgs # Bengali chars not emnist
-            
-            mnist_sample = data_mnist[:ss4].cuda()
-            emnist_sample = data_emnist[:ss4].cuda()
-            
-            #push the images through the model
-            mnist_act = vae.activations(emnist_sample.view(-1,3,28,28), False)
-            emnist_act = vae.activations(emnist_sample.view(-1,3,28,28), False)
-            
-            emnist_shape_act = emnist_act['shape']
-            emnist_color_act = emnist_act['color']
-
-            mnist_shape_act = mnist_act['shape']
-            mnist_color_act = mnist_act['color']
-            mnist_l1_act = mnist_act['skip']
-
-
-            BP_activations_fam_1 = {'shape': [emnist_shape_act[:ss1].view(ss1,-1), 1], 'color': [emnist_color_act[:ss1].view(ss1,-1), 1]} # 2 familiar in shape/color
-            BP_activations_nov_1_sc = {'shape': [mnist_shape_act[:ss1].view(ss1,-1), 1], 'color': [mnist_color_act[:ss1].view(ss1,-1), 1]} # 2 familiar in shape/color
-            BP_activations_nov_1 = {'l1': [mnist_l1_act[:ss1].view(ss1,-1), 1]} # 2 novel in L1
-
-            BP_activations_fam_4 = {'shape': [emnist_shape_act.view(ss4,-1), 1], 'color': [emnist_color_act.view(ss4,-1), 1]} # 4 familiar in shape/color
-            BP_activations_nov_4_sc = {'shape': [mnist_shape_act.view(ss4,-1), 1], 'color': [mnist_color_act.view(ss4,-1), 1]} # 4 familiar in shape/color
-            BP_activations_nov_4 = {'l1': [mnist_l1_act.view(ss4,-1), 1]} # 4 novel in L1
-
-            # store and retrieve 1 familiar s/c maps
-            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_fam_1, ss1,normalize_factor)
-            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_fam_1, ss1,normalize_factor)
-            shape_out_1, color_out_1 = BP_activations_out['shape'], BP_activations_out['color']
-
-            # store and retrieve 1 familiar l1 act
-            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_nov_1, ss1,normalize_factor)
-            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_nov_1, ss1,normalize_factor)
-            l1_out_1 = BP_activations_out['l1']
-            
-            
-            # store and retrieve 4 familiar s/c maps
-            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_fam_4, ss4,normalize_factor)
-            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_fam_4, ss4,normalize_factor)
-            shape_out_4, color_out_4 = BP_activations_out['shape'], BP_activations_out['color']
-
-            # store and retrieve 4 familiar l1 act
-            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_nov_4, ss4,normalize_factor)
-            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_nov_4, ss4,normalize_factor)
-            l1_out_4 = BP_activations_out['l1']
-    
-            recon_fam_1 = vae.decoder_cropped(shape_out_1, color_out_1,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_1, 0))#
-            #recon_nov_1 = vae.decoder_cropped(shape_out_novel_1, color_out_novel_1,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_1, 0))#
-            recon_nov_1 = vae.decoder_skip_cropped(0, 0, 0, l1_out_1).cuda()
-            recon_nov_1 = Ft.gaussian_blur(recon_nov_1, kernel_size=[3, 3], sigma=[1.0, 1.0])
-            #recon_nov_1  = torch.where(recon_nov_1  < 0.15, torch.zeros_like(recon_nov_1 ),recon_nov_1 )
-            #recon_nov_1 = torch.from_numpy(ndimage.median_filter(recon_nov_1.cpu().numpy(), size=(1,1,3,3))).to(recon_nov_1.device)
-
-            recon_fam_4 = vae.decoder_cropped(shape_out_4, color_out_4,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_4, 0))#
-            #recon_nov_4 = vae.decoder_cropped(shape_out_novel_4, color_out_novel_4,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_4, 0))#
-            recon_nov_4 = vae.decoder_skip_cropped(0, 0, 0, l1_out_4).cuda()
-        
-            recon_nov_4 = Ft.gaussian_blur(recon_nov_4, kernel_size=[3, 3], sigma=[1.0, 1.0])
-            #recon_nov_4  = torch.where(recon_nov_4  < 0.4, torch.zeros_like(recon_nov_4 ),recon_nov_4 )
-
-            corr_fam_1 = batch_ssim(emnist_sample[:ss1], recon_fam_1)
-            corr_nov_1 = batch_ssim(emnist_sample[:ss1], recon_nov_1)
-            corr_fam_4 = batch_ssim(emnist_sample, recon_fam_4)
-            corr_nov_4 = batch_ssim(emnist_sample, recon_nov_4)
-#            corr_fam_1 = compute_correlation(emnist_sample[:ss1], recon_fam_1).item()
-#            corr_nov_1 = compute_correlation(emnist_sample[:ss1], recon_nov_1).item()
-#            corr_fam_4 = compute_correlation(emnist_sample, recon_fam_4).item()
-#            corr_nov_4 = compute_correlation(emnist_sample, recon_nov_4).item()
-
-            fam_1 += [corr_fam_1]
-            nov_1 += [corr_nov_1]
-
-            fam_4 += [corr_fam_4]
-            nov_4 += [corr_nov_4]
-
-        corr_fam_1 = sum(fam_1)/len(fam_1)
-        corr_nov_1 = sum(nov_1)/len(nov_1)
-
-        corr_fam_4 = sum(fam_4)/len(fam_4)
-        corr_nov_4 = sum(nov_4)/len(nov_4)
-
-        print(corr_nov_1, corr_nov_4)
-        print(corr_fam_1, corr_fam_4)
-
-        e = torch.zeros((1,3,28,28)).cuda()
-        fig_data = [mnist_sample, torch.cat([recon_nov_1, e, e, e], 0), recon_nov_4, emnist_sample,
-                   torch.cat([recon_fam_1, e, e, e], 0), recon_fam_4,]
-
-        data_to_pickle = {
-            "fig_data": fig_data,
-            "ss1": ss1,
-            "ss4": ss4,
-            "corr_nov_1": corr_nov_1,
-            "corr_nov_4": corr_nov_4,
-            "corr_fam_1": corr_fam_1,
-            "corr_fam_4": corr_fam_4,
-        }
-
-        joblib.dump(data_to_pickle, pkl_path)
-
-    else:
-        if not os.path.exists(pkl_path):
-            raise Exception(f"No data exists for plot: {folder_path}{log_function_name()}")
-        
-        # load plotting data
-        loaded_data = joblib.load(pkl_path)
-        ss1 = loaded_data["ss1"]
-        ss4 = loaded_data["ss4"]
-        corr_nov_1 = loaded_data["corr_nov_1"]
-        corr_nov_4 = loaded_data["corr_nov_4"]
-        corr_fam_1 = loaded_data["corr_fam_1"]
-        corr_fam_4 = loaded_data["corr_fam_4"]
-
-    save_image(
-        torch.cat(fig_data, 0),
-        f'{folder_path}efficient_recon_sample_ss1_ss4.png', pad_value=0.6,
-        nrow=ss4, normalize=False)
-
-    plt.figure()
-
-    sns.lineplot(
-        x=[ss1, ss4],
-        y=[corr_nov_1, corr_nov_4],
-        label='novel images (L1)'
-    )
-
-    sns.lineplot(
-        x=[ss1, ss4],
-        y=[corr_fam_1, corr_fam_4],
-        label='familiar images (feature maps)'
-    )
-
-    plt.xlabel('set size')
-    plt.ylabel('r')
-    plt.title('Set Size vs. Reconstruction Correlation')
-    plt.legend()
-
-    plt.savefig(f'{folder_path}efficient_recon.png')
-    plt.close()
-
-
 def batch_ssim(x, y):
     """x, y: (B, C, H, W) torch tensors. Returns mean SSIM across batch."""
     x_np = x.cpu().numpy()
@@ -2196,12 +2011,197 @@ def sample_points(n, m, k=5, min_dist=5):
 
     return points
 
+@torch.no_grad()
+def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
+    #used in the interference panel
+        #demonstrates that the same stimulus when reconstructed through L1 accumulates interference more quickly..
+            #except that the metrics don't support this, even though its visually quite bad
+
+    pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
+    vae.eval()
+
+    if load_data is False:
+        print('generating Figure efficient reconstruction plot')
+        retina_size = 100
+        imgsize = 28
+        #bpsize = 10000         #size of the binding pool
+        #token_overlap = 0.3
+        bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
+        numimg = 7
+        ss1 = 1
+        ss4 = 4
+        #make the data loader
+        test_loader_mnist = Dataset('mnist',{'colorize':True}, train=True).get_loader(numimg)
+        test_loader_emnist = Dataset('emnist',{'retina':False, 'colorize':True, 'rotate':False, 'scale':True, 'target_set':[10, 11, 12, 13, 14, 15]}, train=True).get_loader(numimg)
+
+
+        #load in some examples of Bengali Characters
+        '''for i in range (1,7):
+            color = Colorize_specific(random.randint(0,9))
+            img = Image.open(f'data/current_bengali/{i}_thick.png')
+            img_new = convert_tensor(color(img))
+            
+            all_imgs.append(img_new)
+        all_imgs = torch.stack(all_imgs)
+        imgs = all_imgs.view(-1, 3, imgsize, imgsize).cuda()   ''' 
+
+        dataiter_mnist = iter(test_loader_mnist)
+        dataiter_emnist = iter(test_loader_emnist)
+        fam_1 = []
+        nov_1 = []
+        fam_4 = []
+        nov_4 = []
+        trialcount = 1000
+        for count in range(0,trialcount):
+            data_mnist, labels = next(dataiter_mnist)
+            data_emnist, labels = next(dataiter_emnist)
+            #data_emnist = imgs # Bengali chars not emnist
+            
+            mnist_sample = data_mnist[:ss4].cuda()
+            emnist_sample = data_emnist[:ss4].cuda()
+            
+            #push the images through the model
+            mnist_act = vae.activations(emnist_sample.view(-1,3,28,28), False)
+            emnist_act = vae.activations(emnist_sample.view(-1,3,28,28), False)
+            
+            emnist_shape_act = emnist_act['shape']
+            emnist_color_act = emnist_act['color']
+
+            mnist_shape_act = mnist_act['shape']
+            mnist_color_act = mnist_act['color']
+            mnist_l1_act = mnist_act['skip']
+
+
+            BP_activations_fam_1 = {'shape': [emnist_shape_act[:ss1].view(ss1,-1), 1], 'color': [emnist_color_act[:ss1].view(ss1,-1), 1]} # 2 familiar in shape/color
+            BP_activations_nov_1_sc = {'shape': [mnist_shape_act[:ss1].view(ss1,-1), 1], 'color': [mnist_color_act[:ss1].view(ss1,-1), 1]} # 2 familiar in shape/color
+            BP_activations_nov_1 = {'l1': [mnist_l1_act[:ss1].view(ss1,-1), 1]} # 2 novel in L1
+
+            BP_activations_fam_4 = {'shape': [emnist_shape_act.view(ss4,-1), 1], 'color': [emnist_color_act.view(ss4,-1), 1]} # 4 familiar in shape/color
+            BP_activations_nov_4_sc = {'shape': [mnist_shape_act.view(ss4,-1), 1], 'color': [mnist_color_act.view(ss4,-1), 1]} # 4 familiar in shape/color
+            BP_activations_nov_4 = {'l1': [mnist_l1_act.view(ss4,-1), 1]} # 4 novel in L1
+
+            # store and retrieve 1 familiar s/c maps
+            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_fam_1, ss1,normalize_factor)
+            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_fam_1, ss1,normalize_factor)
+            shape_out_1, color_out_1 = BP_activations_out['shape'], BP_activations_out['color']
+
+            # store and retrieve 1 familiar l1 act
+            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_nov_1, ss1,normalize_factor)
+            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_nov_1, ss1,normalize_factor)
+            l1_out_1 = BP_activations_out['l1']
+            
+            
+            # store and retrieve 4 familiar s/c maps
+            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_fam_4, ss4,normalize_factor)
+            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_fam_4, ss4,normalize_factor)
+            shape_out_4, color_out_4 = BP_activations_out['shape'], BP_activations_out['color']
+
+            # store and retrieve 4 familiar l1 act
+            BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_nov_4, ss4,normalize_factor)
+            BP_activations_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_nov_4, ss4,normalize_factor)
+            l1_out_4 = BP_activations_out['l1']
+    
+            recon_fam_1 = vae.decoder_cropped(shape_out_1, color_out_1,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_1, 0))#
+            #recon_nov_1 = vae.decoder_cropped(shape_out_novel_1, color_out_novel_1,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_1, 0))#
+            recon_nov_1 = vae.decoder_skip_cropped(0, 0, 0, l1_out_1).cuda()
+            recon_nov_1 = Ft.gaussian_blur(recon_nov_1, kernel_size=[3, 3], sigma=[1.0, 1.0])
+            #recon_nov_1  = torch.where(recon_nov_1  < 0.15, torch.zeros_like(recon_nov_1 ),recon_nov_1 )
+            #recon_nov_1 = torch.from_numpy(ndimage.median_filter(recon_nov_1.cpu().numpy(), size=(1,1,3,3))).to(recon_nov_1.device)
+
+            recon_fam_4 = vae.decoder_cropped(shape_out_4, color_out_4,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_4, 0))#
+            #recon_nov_4 = vae.decoder_cropped(shape_out_novel_4, color_out_novel_4,0,0).cuda() #rgb_to_gray(vae.decoder_shape(shape_out_4, 0))#
+            recon_nov_4 = vae.decoder_skip_cropped(0, 0, 0, l1_out_4).cuda()
+        
+            recon_nov_4 = Ft.gaussian_blur(recon_nov_4, kernel_size=[3, 3], sigma=[1.0, 1.0])
+            #recon_nov_4  = torch.where(recon_nov_4  < 0.4, torch.zeros_like(recon_nov_4 ),recon_nov_4 )
+
+            corr_fam_1 = batch_ssim(emnist_sample[:ss1], recon_fam_1)
+            corr_nov_1 = batch_ssim(emnist_sample[:ss1], recon_nov_1)
+            corr_fam_4 = batch_ssim(emnist_sample, recon_fam_4)
+            corr_nov_4 = batch_ssim(emnist_sample, recon_nov_4)
+#            corr_fam_1 = compute_correlation(emnist_sample[:ss1], recon_fam_1).item()
+#            corr_nov_1 = compute_correlation(emnist_sample[:ss1], recon_nov_1).item()
+#            corr_fam_4 = compute_correlation(emnist_sample, recon_fam_4).item()
+#            corr_nov_4 = compute_correlation(emnist_sample, recon_nov_4).item()
+
+            fam_1 += [corr_fam_1]
+            nov_1 += [corr_nov_1]
+
+            fam_4 += [corr_fam_4]
+            nov_4 += [corr_nov_4]
+
+        corr_fam_1 = sum(fam_1)/len(fam_1)
+        corr_nov_1 = sum(nov_1)/len(nov_1)
+
+        corr_fam_4 = sum(fam_4)/len(fam_4)
+        corr_nov_4 = sum(nov_4)/len(nov_4)
+
+        print(corr_nov_1, corr_nov_4)
+        print(corr_fam_1, corr_fam_4)
+
+        e = torch.zeros((1,3,28,28)).cuda()
+        fig_data = [mnist_sample, torch.cat([recon_nov_1, e, e, e], 0), recon_nov_4, emnist_sample,
+                   torch.cat([recon_fam_1, e, e, e], 0), recon_fam_4,]
+
+        data_to_pickle = {
+            "fig_data": fig_data,
+            "ss1": ss1,
+            "ss4": ss4,
+            "corr_nov_1": corr_nov_1,
+            "corr_nov_4": corr_nov_4,
+            "corr_fam_1": corr_fam_1,
+            "corr_fam_4": corr_fam_4,
+        }
+
+        joblib.dump(data_to_pickle, pkl_path)
+
+    else:
+        if not os.path.exists(pkl_path):
+            raise Exception(f"No data exists for plot: {folder_path}{log_function_name()}")
+        
+        # load plotting data
+        loaded_data = joblib.load(pkl_path)
+        ss1 = loaded_data["ss1"]
+        ss4 = loaded_data["ss4"]
+        corr_nov_1 = loaded_data["corr_nov_1"]
+        corr_nov_4 = loaded_data["corr_nov_4"]
+        corr_fam_1 = loaded_data["corr_fam_1"]
+        corr_fam_4 = loaded_data["corr_fam_4"]
+
+    save_image(
+        torch.cat(fig_data, 0),
+        f'{folder_path}efficient_recon_sample_ss1_ss4.png', pad_value=0.6,
+        nrow=ss4, normalize=False)
+
+    plt.figure()
+
+    sns.lineplot(
+        x=[ss1, ss4],
+        y=[corr_nov_1, corr_nov_4],
+        label='novel images (L1)'
+    )
+
+    sns.lineplot(
+        x=[ss1, ss4],
+        y=[corr_fam_1, corr_fam_4],
+        label='familiar images (feature maps)'
+    )
+
+    plt.xlabel('set size')
+    plt.ylabel('r')
+    plt.title('Set Size vs. Reconstruction Correlation')
+    plt.legend()
+
+    plt.savefig(f'{folder_path}efficient_recon.png')
+    plt.close()
+
+
 def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
     #used in the interference panel
     test_loader = cycle(dataset.get_loader(numimg))
     dataiter = iter(test_loader)
-    bpsize = 10000        #size of the binding pool
-    token_overlap =0.3
+    #bpsize = 10000        #size of the binding pool
+    #token_overlap =0.3
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
     errors_1 = []
@@ -2343,7 +2343,8 @@ def fig_feature_swap(vae: VAE_CNN, folder_path: str, load_data: bool = False):
         vae.eval()
         # store several colored squares.  Compute how often there is a swap for each set size
         dataset = Dataset('square',{'retina':False, 'colorize':False, 'rotate':False, 'scale':True}, train=False)
-
+        #dataset = Dataset('emnist',{'retina':False, 'colorize':False, 'rotate':False, 'scale':True}, train=False)
+        
         #iterate numimg 1-8, compute swap rate at each
         token_swap_rates = []
         color_swap_rates = []
