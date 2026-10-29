@@ -1942,7 +1942,7 @@ def store_retrieve2(trial_name: str, dataset, vae: VAE_CNN, color_classifier, nu
             # remaining binding pool neurons to get the token activation
             tokenactivation[tokens] = BP_reactivate_tok.sum()
 
-        max, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
+        _, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
         BPOut_cued[0, notLink_all[maxtoken, :]] = 0
 
         BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_factor)
@@ -2188,19 +2188,19 @@ def fig_efficient_rep(vae: VAE_CNN, folder_path: str, load_data: bool = False):
 
 def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
     #used in the interference panel.  Loads up memories with squares at different locations
+
+    cx, cy, r = 14, 14, 5  # center of 28x28, radius 5
+
     test_loader = cycle(dataset.get_loader(numimg))
     dataiter = iter(test_loader)
     #bpsize = 10000        #size of the binding pool
     #token_overlap =0.3
     bpPortion = int(token_overlap *bpsize) # number binding pool neurons used for each item
 
-    errors_1 = []
-    errors_2 = []
-    correct_token_err = []
-    correct_token_chosen_err = []
+    target_dists = []
+    nontarget_dists = []
     token_swap = 0
-    swap_count = 0
-    trial_count = 500
+    trial_count =200
     for _ in range(trial_count):
         crop_imgs = next(dataiter)[0].cuda()  #grab some squares
 
@@ -2209,37 +2209,18 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
         colors = random.sample(range(10), numimg)
         for i in range(numimg):
             x, y = locations[i]
-            imgs[i,:,x:x+imgsize,y:y+imgsize] = crop_imgs[i]
-            color = colors[i]
-            colors.append(color)
-            colorizer = Colorize_specific(color)
-            frame = convert_tensor(colorizer(convert_image(imgs[i].cpu())))
-            imgs[i] = frame.cuda()
+            colorizer = Colorize_specific(colors[i])
+            colored_crop = convert_tensor(colorizer(convert_image(crop_imgs[i].cpu()))).cuda()
+            imgs[i, :, x:x+imgsize, y:y+imgsize] = colored_crop
         
-
-        crop_imgs_ex = next(dataiter)[0].cuda()
-        imgs_ex = torch.zeros(numimg,3,64,64).cuda()
-        for i in range(numimg):
-            x, y = locations[i]
-            imgs_ex[i,:,x:x+imgsize,y:y+imgsize] = crop_imgs_ex[i]
-            color = random.randint(0,9)
-            colorizer = Colorize_specific(color)
-            frame = convert_tensor(colorizer(convert_image(imgs_ex[i].cpu())))
-            imgs_ex[i] = frame.cuda()
-
-        #push the images through the encoder
+        #push the images through the encoder one at a time
         activations = vae.activations(imgs.view(-1,3,64, 64), True)
         shape_act = activations['shape']
         color_act = activations['color']
         location_act = activations['location']
 
         cue_activations = vae.activations(imgs[0].view(-1,3,64, 64), True)
-        #cue_shape_act = cue_activations['shape']
-        cue_location_act = cue_activations['location']
-
-        excluded_activations = vae.activations(imgs_ex.view(-1,3,64, 64), True)
-        #excluded_shape_act = excluded_activations['shape']
-        excluded_color_act = excluded_activations['color']
+        cue_location_act = cue_activations['location'] 
         
         BP_activations_sc = {'shape': [shape_act.view(numimg,-1), 1],
                              'color': [color_act.view(numimg,-1), 1],
@@ -2249,6 +2230,7 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
         BPOut, Tokenbindings = BPTokens_storage(bpsize, bpPortion, BP_activations_sc, numimg, normalize_factor)
         
         BPOut_cued = BPOut.clone()
+
         # cue by greyscale shape activation of first image
         tokenactivation = torch.zeros(numimg)
         notLink_all = Tokenbindings[0]
@@ -2261,134 +2243,130 @@ def feature_swap_trial(dataset, vae: VAE_CNN, numimg: int, imgsize: int):
             BP_reactivate_tok[0,notLink_all[tokens, :]] = 0
             tokenactivation[tokens] = BP_reactivate_tok.sum()
 
-        max, maxtoken =torch.max(tokenactivation,0) #which token has the most activation
+        _, maxtoken = torch.max(tokenactivation, 0)
         BPOut_cued[0, notLink_all[maxtoken, :]] = 0
 
-        BP_act_out = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_factor)
-        BP_act_out_cued = BPTokens_retrieveByToken( bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_factor)
-        
-        shape_out_BP, color_out_BP = BP_act_out['shape'], BP_act_out['color']
-        shape_out_BP_cued, color_out_BP_cued = BP_act_out_cued['shape'], BP_act_out_cued['color']
-        
-        errors = []
-        for i in range(numimg):
-            errors += [torch.norm(color_act[i]-color_out_BP_cued[0]).item()]
-        
-        correct_token_err += [errors[0]]
-        
-        if maxtoken == 0:
-            correct_token_chosen_err += [torch.norm(color_act[0]-color_out_BP_cued[0]).item()]
-        
+        BP_act_out = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut, Tokenbindings, BP_activations_sc, numimg, normalize_factor)
+        BP_act_out_cued = BPTokens_retrieveByToken(bpsize, bpPortion, BPOut_cued, Tokenbindings, BP_activations_sc, numimg, normalize_factor)
+
+        # decode retrieved color
+        recon_cued = vae.decoder_color(0, BP_act_out_cued['color'][maxtoken].view(1, -1))
+        cued_patch = recon_cued[0, :, cy-r:cy+r, cx-r:cx+r].mean(dim=[1, 2])
+
+        # decode target's original color
+        recon_target = vae.decoder_color(0, color_act[0].view(1, -1))
+        target_patch = recon_target[0, :, cy-r:cy+r, cx-r:cx+r].mean(dim=[1, 2])
+
+        d_target = torch.norm(cued_patch - target_patch).item()
+        target_dists.append(d_target)
+
+        if numimg > 1:
+            d_others = []
+            for i in range(1, numimg):
+                recon_other = vae.decoder_color(0, color_act[i].view(1, -1))
+                other_patch = recon_other[0, :, cy-r:cy+r, cx-r:cx+r].mean(dim=[1, 2])
+                d_others.append(torch.norm(cued_patch - other_patch).item())
+            nontarget_dists.append(npy.mean(d_others))
+
+
+        # same for non-targets
+        if numimg > 1:
+            d_others = []
+            for i in range(1, numimg):
+                recon_other = vae.decoder_color(0, color_act[i].view(1, -1))
+                other_patch = recon_other[0, :, cy-r:cy+r, cx-r:cx+r].mean(dim=[1, 2])
+                d_others.append(torch.norm(cued_patch - other_patch).item())
+            nontarget_dists.append(npy.mean(d_others))
+
+
         if maxtoken != 0:
             token_swap += 1
 
-        elif errors[0] != min(errors):
-            swap_count += 1
 
-        excluded_errors = []
-        for i in range(numimg):
-            excluded_errors += [torch.norm(excluded_color_act[i]-color_out_BP_cued[0]).item()]
-        
-        errors_1 += [npy.mean(errors[1:])] if len(errors) > 1 else [0.0]
-        errors_2 += [npy.mean(excluded_errors)]
-    correct_token_err_out = npy.mean(npy.array(correct_token_err))
-    #correct_token_chosen_err_out = npy.mean(npy.array(correct_token_chosen_err))
-    correct_token_chosen_err_out = npy.mean(npy.array(correct_token_chosen_err)) if len(correct_token_chosen_err) > 0 else float('nan')
-    errors = npy.mean(npy.array(errors_1))
-    excluded_errors = npy.mean(npy.array(errors_2))
-    
-    print(locations)
-    # build example figure from the last trial: originals, BP recons, grey cue, cued recon
-    BP_cropped_recon = vae.decoder_cropped(shape_out_BP, color_out_BP, 0, 0)
-    BP_cropped_recon_cued = vae.decoder_cropped(shape_out_BP_cued, color_out_BP_cued, 0, 0)
+    # example images from last trial
+    orig_recon = vae.decoder_cropped(shape_act, color_act, 0, 0)
+    orig_recon = F.interpolate(orig_recon, size=(64, 64), mode='bilinear', align_corners=False)
+
     grey_weights = torch.tensor([0.2989, 0.5870, 0.1140], device=imgs.device).view(1, 3, 1, 1)
     grey_cue = (imgs[0:1] * grey_weights).sum(dim=1, keepdim=True).repeat(1, 3, 1, 1)
-    # pad cue row to match numimg items
-    cue_pad = torch.zeros(numimg - 1, 3, 64, 64).cuda()
-    grey_cue_row = torch.cat([grey_cue, cue_pad], 0)
-    # resize 28x28 recons to 64x64
-    BP_cropped_recon_up = F.interpolate(BP_cropped_recon, size=(64, 64), mode='bilinear', align_corners=False)
-    BP_cropped_recon_cued_up = F.interpolate(BP_cropped_recon_cued, size=(64, 64), mode='bilinear', align_corners=False)
-    # pad cued recon row (it's 1 item) to numimg
-    cued_pad = torch.zeros(numimg - 1, 3, 64, 64).cuda()
-    cued_row = torch.cat([BP_cropped_recon_cued_up, cued_pad], 0)
-    example_imgs = torch.cat([
-        imgs,                     # row 1: originals
-        BP_cropped_recon_up,      # row 2: all BP recons
-        grey_cue_row,             # row 3: cue (first item, rest blank)
-        cued_row,                 # row 4: cued recon (first item, rest blank)
-    ], 0)
+    pad_count = numimg - 1 if numimg > 1 else 0
+    pad = torch.zeros(pad_count, 3, 64, 64).cuda()
+    cue_row = torch.cat([grey_cue, pad], 0) if numimg > 1 else grey_cue
 
-    print(f"Feature swap count: {token_swap} {swap_count} out of {trial_count}")
-    print("Feature swap color vector difference:", errors)
-    print("Feature swap color vector difference exlcuded:", excluded_errors)
-    return [token_swap / trial_count, swap_count / trial_count, correct_token_err_out, correct_token_chosen_err_out, errors, excluded_errors, example_imgs, numimg]
+    recon_cued_img = vae.decoder_cropped(
+        BP_act_out_cued['shape'][maxtoken].view(1, -1),
+        BP_act_out_cued['color'][maxtoken].view(1, -1), 0, 0)
+    recon_cued_img = F.interpolate(recon_cued_img, size=(64, 64), mode='bilinear', align_corners=False)
+    cued_row = torch.cat([recon_cued_img, pad], 0) if numimg > 1 else recon_cued_img
+
+    example_imgs = torch.cat([imgs, orig_recon, cue_row, cued_row], 0)
+    return {
+        'token_swap': token_swap / trial_count,
+        'target_dist': npy.mean(target_dists),
+        'nontarget_dist': npy.mean(nontarget_dists) if nontarget_dists else 0.0,
+        'example_imgs': example_imgs,
+        'numimg': numimg
+    }
+
     
+
 @torch.no_grad()
 def fig_feature_swap(vae: VAE_CNN, folder_path: str, load_data: bool = False):
     pkl_path = f'{folder_path}{log_function_name()}-figure_data.pkl'
-    
+
     if load_data is False:
         vae.eval()
-        # store several colored squares.  Compute how often there is a swap for each set size
-        dataset = Dataset('square',{'retina':False, 'colorize':False, 'rotate':False, 'scale':True}, train=False)
-        #dataset = Dataset('emnist',{'retina':False, 'colorize':False, 'rotate':False, 'scale':True}, train=False)
-        
-        #iterate numimg 1-8, compute swap rate at each
-        token_swap_rates = []
-        color_swap_rates = []
-        errors_list = []
-        correct_token_chosen_err = []
-        for numing in range(1,8):
-            swaps = feature_swap_trial(dataset, vae, numing, imgsize=imgsize)
-            token_swap_rates += [swaps[0]]
-            color_swap_rates += [swaps[1]]
-            errors_list += [[swaps[2], swaps[4]]]
-            correct_token_chosen_err += [swaps[3]]
-            save_image(swaps[6], f'{folder_path}feature_swap_example_{numing}.png',
-                       nrow=swaps[7], normalize=False, pad_value=0.6)
-        data_to_pickle = {
-            "token_swap_rates": token_swap_rates,
-            "color_swap_rates": color_swap_rates,
-            "errors_list": errors_list,
-            "correct_token_chosen_err": correct_token_chosen_err
-        }
+#        dataset = Dataset('emnist', {'retina': False, 'colorize': False, 'rotate': False, 'scale': True}, train=False)
+        dataset = Dataset('square', {'retina': False, 'colorize': False, 'rotate': False, 'scale': True}, train=False)
 
+        token_swap_rates = []
+        target_dists = []
+        nontarget_dists = []
+
+        for numimg in range(1, 8):
+            result = feature_swap_trial(dataset, vae, numimg, imgsize=imgsize)
+            token_swap_rates.append(result['token_swap'])
+            target_dists.append(result['target_dist'])
+            nontarget_dists.append(result['nontarget_dist'])
+            save_image(result['example_imgs'],
+            f'{folder_path}feature_swap_example_{numimg}.png',
+            nrow=result['numimg'], normalize=False, pad_value=0.6)
+
+        data_to_pickle = {
+            'token_swap_rates': token_swap_rates,
+            'target_dists': target_dists,
+            'nontarget_dists': nontarget_dists
+        }
         joblib.dump(data_to_pickle, pkl_path)
 
     else:
         if not os.path.exists(pkl_path):
             raise Exception(f"No data exists for plot: {folder_path}{log_function_name()}")
-        
-        # load plotting data
-        loaded_data = joblib.load(pkl_path)
-        token_swap_rates = loaded_data["token_swap_rates"]
-        color_swap_rates = loaded_data["color_swap_rates"]
-        errors_list = loaded_data["errors_list"]
-        correct_token_chosen_err = loaded_data["correct_token_chosen_err"]
+        loaded = joblib.load(pkl_path)
+        token_swap_rates = loaded['token_swap_rates']
+        target_dists = loaded['target_dists']
+        nontarget_dists = loaded['nontarget_dists']
 
-    # % an incorrect token is selected
-    sns.lineplot(x=range(1, 8), y=token_swap_rates)
-    plt.xlabel('Number of items')
-    plt.ylabel('Token swap rate')
-    plt.savefig(f'{folder_path}token_swap_rate.png',bbox_inches="tight")
-    plt.close()
-    
-    # % the correct token is selected but the incorrect square is chosen
-    sns.lineplot(x=range(1, 8), y=color_swap_rates)
-    plt.xlabel('Number of items')
-    plt.ylabel('Feature swap rate')
-    plt.savefig(f'{folder_path}feature_swap_rate.png',bbox_inches="tight")
+    # token swap rate
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(range(1, 8), token_swap_rates, 'o-')
+    ax.set_xlabel('Set size')
+    ax.set_ylabel('Token swap rate')
+    ax.set_title('Token Swap Rate by Set Size')
+    plt.tight_layout()
+    plt.savefig(f'{folder_path}token_swap_rate.png', dpi=300, bbox_inches='tight')
     plt.close()
 
-    # error between selected color and true color  
-    sns.lineplot(x=range(1, 8), y=[e[0] for e in errors_list], label='Correct items')
-    #sns.lineplot(x=range(1, 8), y=[e[1] for e in errors_list], label='Other items')
-    sns.lineplot(x=range(1, 8), y=correct_token_chosen_err, label='Correct token chosen')
-    plt.xlabel('Number of items')
-    plt.ylabel('SSIM color vector')
-    plt.legend()
-    plt.savefig(f'{folder_path}feature_error.png',bbox_inches="tight")
+    # color distance: target vs non-target
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(range(1, 8), target_dists, 'o-', label='Target')
+    ax.plot(range(2, 8), nontarget_dists[1:], 's-', label='Non-target mean')
+    ax.set_xlabel('Set size')
+    ax.set_ylabel('L2 distance')
+    ax.set_title('Retrieved Color Distance: Target vs Non-Target')
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(f'{folder_path}feature_swap_distance.png', dpi=300, bbox_inches='tight')
     plt.close()
 
 @torch.no_grad()
