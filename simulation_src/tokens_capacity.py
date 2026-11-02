@@ -44,7 +44,6 @@ from sklearn import svm
 from sklearn.metrics import classification_report, confusion_matrix
  
 #from IPython.display import Image, display
-import cv2
 from PIL import ImageFilter
 import random
 

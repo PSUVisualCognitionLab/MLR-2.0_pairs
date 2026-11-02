@@ -26,7 +26,11 @@ def train_classifiers(dataloaders, vae, checkpoint_folder):
 #    clf_oko = classifier_train(vae, 'skip', dataloaders['quickdraw'],'object')
 #    dump(clf_oko, f'checkpoints/{checkpoint_folder}/oco.joblib')
 #    pred_oko,  coreport = classifier_test(vae, 'skip', clf_oco, dataloaders['quickdraw'],'quickdraw','object' ,1)
-
+    print('training emnist data on color map using color labels')   #this should be high
+    clf_ecc = classifier_train(vae, 'color', dataloaders['emnist-map'], 'color')
+    dump(clf_ecc, f'checkpoints/{checkpoint_folder}/ecc.joblib')
+    pred_ecc,  coreport = classifier_test(vae, 'color', clf_ecc, dataloaders['emnist-map'],'emnist','color', 1)
+    
     print('training emnist data on shape map using shape labels')   #this should be high
     clf_ess = classifier_train(vae, 'shape', dataloaders['emnist-map'], 'shape')
     dump(clf_ess, f'checkpoints/{checkpoint_folder}/ess.joblib')
@@ -37,27 +41,25 @@ def train_classifiers(dataloaders, vae, checkpoint_folder):
     dump(clf_mss, f'checkpoints/{checkpoint_folder}/mss.joblib')
     pred_mss,  coreport = classifier_test(vae, 'shape', clf_mss, dataloaders['mnist-map'],'mnist','shape', 1)
 
-
-
     print('training object data on color map using color labels')   #this should be high
-    clf_occ = classifier_train(vae, 'color', dataloaders['quickdraw'], 'color')
+    clf_occ = classifier_train(vae, 'color', dataloaders['quickdraw-map'], 'color')
     dump(clf_occ, f'checkpoints/{checkpoint_folder}/occ.joblib')
-    pred_occ,  coreport = classifier_test(vae, 'color', clf_occ, dataloaders['quickdraw'],'quickdraw','color', 1)
+    pred_occ,  coreport = classifier_test(vae, 'color', clf_occ, dataloaders['quickdraw-map'],'quickdraw','color', 1)
 
     print('training object data on object map using object labels')  #this should be high
-    clf_ooo = classifier_train(vae, 'object', dataloaders['quickdraw'],'object')
+    clf_ooo = classifier_train(vae, 'object', dataloaders['quickdraw-map'],'object')
     dump(clf_ooo, f'checkpoints/{checkpoint_folder}/ooo.joblib')
-    pred_ooo,  oooreport = classifier_test(vae, 'object', clf_ooo, dataloaders['quickdraw'],'quickdraw','object', 1)
+    pred_ooo,  oooreport = classifier_test(vae, 'object', clf_ooo, dataloaders['quickdraw-map'],'quickdraw','object', 1)
 
     print('training object data on color map using object labels')   #this should be low but above chance
-    clf_oco = classifier_train(vae, 'color', dataloaders['quickdraw'],'object')
+    clf_oco = classifier_train(vae, 'color', dataloaders['quickdraw-map'],'object')
     dump(clf_oco, f'checkpoints/{checkpoint_folder}/oco.joblib')
-    pred_oco,  coreport = classifier_test(vae, 'color', clf_oco, dataloaders['quickdraw'],'quickdraw','object' ,1)
+    pred_oco,  coreport = classifier_test(vae, 'color', clf_oco, dataloaders['quickdraw-map'],'quickdraw','object' ,1)
 
 #how to load a classifier
     print('test object data on color map using color labels')   #this should be high
     clf_occ = joblib.load(f'checkpoints/{checkpoint_folder}/occ.joblib')
-    pred_occ,  coreport = classifier_test(vae, 'color', clf_occ, dataloaders['quickdraw'],'quickdraw','color', 1)
+    pred_occ,  coreport = classifier_test(vae, 'color', clf_occ, dataloaders['quickdraw-map'],'quickdraw','color', 1)
 
 
 

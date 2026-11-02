@@ -182,8 +182,125 @@ def BPTokens_binding_all(bp_outdim,  bpPortion, shape_coef,color_coef,shape_act,
 
     return tokenactivation, maxtoken, shape_out,color_out, l1_out
 
-# input_dict = {act_name: [act, coeff]}, l1 (skip), shape, color, spatial
+def get_act_names(token_act_bitmask, act_name_map):
+    act_names = []
+    for i in range(len(token_act_bitmask)):
+        if token_act_bitmask[i]:
+            act_names += [act_name_map[i]]
+    return act_names
 
+
+# input a bitmask of which latents to encode/decode per token
+# bitmasks: {token:mask} eg: {0:0110101...}
+
+# activation dict format: {act_name: [act, coeff]}
+
+# input_dict = {act_name: [act, coeff]}, l1 (skip), shape, color, spatial
+# bpsize: size of binding pool: int, bpPortion: number of units per token: int, bs_testing: set size, number of objects(tokens):int
+# normalize_fact: was used to normalize activations, currently deprecated, std: variance of the fixed random weights
+def BPTokens_storage_bitmask(bpsize, bpPortion, activation_dict, bs_testing, normalize_fact, std=1):
+    notLink_all = list()  # will be used to accumulate the specific token linkages
+    BP_in_all = list()  # will be used to accumulate the bp activations for each item
+    tokenBindings = {}
+    act_count = 7
+
+    if 'act_bitmask' in activation_dict:
+        act_bitmask = activation_dict['act_bitmask']
+        act_name_map = activation_dict['act_name_map']
+
+    else: # maintains original behavior for figures relying on the old implementation
+        act_bitmask = {x: [1] * act_count for x in range(bs_testing)}
+        act_name_map = ['shape', 'color', 'location', 'scale', 'l1', 'l2', 'object']
+
+    #activations = defaultdict(lambda: [torch.zeros([bs_testing,1]).cuda(), 0], activation_dict) # error handling, default 0 coeffs
+    # activation multi-hot tensor to track which reps are being stored
+    activations = {}
+    for act_name in act_name_map:
+        act, coeff = activation_dict[act_name]
+        bp_in_dim = act.shape[1]
+        act_fw = torch.randn(bp_in_dim, bpsize).cuda() *std
+        activations[act_name] = [act, coeff, bp_in_dim, act_fw]
+
+    per_token_contents = defaultdict(list)
+    token_act_indices = defaultdict(int)
+    for token in range(bs_testing):
+        obj_activations_bitmask = act_bitmask[token]
+        act_names = get_act_names(obj_activations_bitmask, act_name_map)
+        for act_name in act_names:
+            act, coeff, bp_in_dim, act_fw = activations[act_name]
+            per_token_contents[token] += [[act[token_act_indices[act_name]].view(1, -1), coeff, act_fw]]
+            token_act_indices[act_name] += 1
+
+    # ENCODING!  Store each item in the binding pool
+    for items in range(bs_testing):  # the number onf images
+        tkLink_tot = torch.randperm(bpsize)  # for each token figure out which connections will be set to 0
+        notLink = tkLink_tot[bpPortion:]  # list of 0'd BPs for this token
+        BP_in_eachimg = sum(torch.mm(act, act_fw) * coeff for (act, coeff, act_fw) in per_token_contents[items])
+        BP_in_eachimg[:, notLink] = 0  # set not linked activations to zero
+        BP_in_all.append(BP_in_eachimg)  # appending and stacking images
+        notLink_all.append(notLink)
+    # now sum all of the BPs together to form one consolidated BP activation set.
+    BP_activation = torch.stack(BP_in_all)
+    BP_activation = torch.squeeze(BP_activation, 1)
+    BP_activation = torch.sum(BP_activation, 0).view(1, -1)  # Add them up
+    # 
+    tokenBindings['notLink_all'] = torch.stack(notLink_all)  # this is the set of 0'd connections for each of the tokens
+    for act_name in activations:
+        tokenBindings[act_name] = (activations[act_name][3]) # fw weights
+
+    return BP_activation, tokenBindings
+
+def BPTokens_retrieveByToken_bitmask(bpsize, bpPortion, BP_in_items, tokenBindings, activation_dict, bs_testing, normalize_fact):
+    notLink_all = tokenBindings['notLink_all']
+
+    if 'act_bitmask' in activation_dict:
+        act_bitmask = activation_dict['act_bitmask']
+        act_name_map = activation_dict['act_name_map']
+    else:  # maintains original behavior for figures relying on the old implementation
+        act_count = 7
+        act_bitmask = {x: [1] * act_count for x in range(bs_testing)}
+        act_name_map = ['shape', 'color', 'location', 'scale', 'l1', 'l2', 'object']
+
+    # forward weights per act_name, saved off during encoding
+    fw_by_name = {act_name: tokenBindings[act_name] for act_name in act_name_map if act_name in tokenBindings}
+
+    # figure out, per token, which act_names are "on" -- same bitmask logic as storage
+    token_act_names = {}
+    act_instance_count = defaultdict(int)
+    for token in range(bs_testing):
+        obj_activations_bitmask = act_bitmask[token]
+        act_names = get_act_names(obj_activations_bitmask, act_name_map)
+        token_act_names[token] = act_names
+        for act_name in act_names:
+            act_instance_count[act_name] += 1
+
+    # destination tensors -- one row per instance of that act_name across all tokens,
+    # matching how storage incremented token_act_indices[act_name] per occurrence
+    out_all = {}
+    for act_name, fw in fw_by_name.items():
+        bp_in_dim = fw.shape[0]
+        out_all[act_name] = torch.zeros(act_instance_count[act_name], bp_in_dim).cuda()
+
+    # Decoding! Retrieve each item from the binding pool
+    BP_in_items = BP_in_items.repeat(bs_testing, 1)  # repeat so each token gets its own row to retrieve from
+    token_act_indices = defaultdict(int)
+    for token in range(bs_testing):
+        BP_in_items[token, notLink_all[token, :]] = 0  # zero out the unconnected BPs for this token's retrieval
+
+        for act_name in token_act_names[token]:
+            fw = fw_by_name[act_name]
+            out_eachimg = torch.mm(BP_in_items[token, :].view(1, -1), fw.t()).cuda()
+
+            idx = token_act_indices[act_name]
+            if act_name == 'l1':  # l1 keeps its special normalize_fact scaling from the original
+                out_all[act_name][idx, :] = (out_eachimg / bpPortion) * normalize_fact
+            else:
+                out_all[act_name][idx, :] = out_eachimg / bpPortion
+            token_act_indices[act_name] += 1
+
+    return out_all
+
+# OLD implementation
 def BPTokens_storage(bpsize, bpPortion, activation_dict, bs_testing, normalize_fact, std=1):
     notLink_all = list()  # will be used to accumulate the specific token linkages
     BP_in_all = list()  # will be used to accumulate the bp activations for each item
@@ -199,6 +316,7 @@ def BPTokens_storage(bpsize, bpPortion, activation_dict, bs_testing, normalize_f
     scale_act, scale_coeff = activations['scale']
     l1_act, l1_coeff = activations['l1']
     l2_act, l2_coeff = activations['l2']
+    object_act, object_coeff = activations['object']
     #print(l1_act.size())
 
     bp_in_shape_dim = shape_act.shape[1]  # neurons in the Bottleneck
@@ -206,6 +324,8 @@ def BPTokens_storage(bpsize, bpPortion, activation_dict, bs_testing, normalize_f
     bp_in_location_dim = location_act.shape[1]
     bp_in_L1_dim = l1_act.shape[1]
     bp_in_L2_dim = l2_act.shape[1]
+    bp_in_scale_dim = scale_act.shape[1]
+    bp_in_object_dim = object_act.shape[1]
     #std = 1
     shape_fw = torch.randn(bp_in_shape_dim,
                             bpsize).cuda() *std  # make the randomized fixed weights to the binding pool
@@ -213,6 +333,8 @@ def BPTokens_storage(bpsize, bpPortion, activation_dict, bs_testing, normalize_f
     location_fw = torch.randn(bp_in_location_dim, bpsize).cuda()*std
     L1_fw = torch.randn(bp_in_L1_dim, bpsize).cuda() *std
     L2_fw = torch.randn(bp_in_L2_dim, bpsize).cuda() *std
+    scale_fw = torch.randn(bp_in_scale_dim, bpsize).cuda() *std
+    object_fw = torch.randn(bp_in_object_dim, bpsize).cuda() *std
 
     # ENCODING!  Store each item in the binding pool
     for items in range(bs_testing):  # the number of images
@@ -220,9 +342,10 @@ def BPTokens_storage(bpsize, bpPortion, activation_dict, bs_testing, normalize_f
         notLink = tkLink_tot[bpPortion:]  # list of 0'd BPs for this token
 
         BP_in_eachimg = torch.mm(shape_act[items, :].view(1, -1), shape_fw) * shape_coeff + torch.mm(
-        color_act[items, :].view(1, -1), color_fw) * color_coeff + torch.mm(
-        location_act[items, :].view(1, -1), location_fw) * location_coeff + torch.mm(
-        l1_act[items, :].view(1, -1), L1_fw) * l1_coeff + torch.mm(l2_act[items, :].view(1, -1), L2_fw) * l2_coeff
+            color_act[items, :].view(1, -1), color_fw) * color_coeff + torch.mm(
+            location_act[items, :].view(1, -1), location_fw) * location_coeff + torch.mm(
+            l1_act[items, :].view(1, -1), L1_fw) * l1_coeff + torch.mm(l2_act[items, :].view(1, -1), L2_fw) * l2_coeff + torch.mm(scale_act[items, :].view(1, -1), scale_fw) * scale_coeff + torch.mm(
+            object_act[items, :].view(1, -1), object_fw) * object_coeff
 
         BP_in_eachimg[:, notLink] = 0  # set not linked activations to zero
         BP_in_all.append(BP_in_eachimg)  # appending and stacking images
@@ -237,14 +360,20 @@ def BPTokens_storage(bpsize, bpPortion, activation_dict, bs_testing, normalize_f
     tokenBindings.append(location_fw)
     tokenBindings.append(L1_fw)
     tokenBindings.append(L2_fw)
+    tokenBindings.append(scale_fw)
+    tokenBindings.append(object_fw)
 
     return BP_activation, tokenBindings
 
 
+
 # BP_in_items -> BP_activations
-def BPTokens_retrieveByToken(bpsize, bpPortion, BP_in_items,tokenBindings, activation_dict, bs_testing, normalize_fact):
+# input_dict = {act_name: [act, coeff]}, l1 (skip), shape, color, spatial
+# bpsize: size of binding pool: int, bpPortion: number of units per token: int, bs_testing: set size, number of objects:int
+# normalize_fact: was used to normalize activations, currently deprecated, std: variance of the fixed random weights
+# BP_in_items: binding pool activation from storage, tokenBindings: forward weights used to store activations in storage
+def BPTokens_retrieveByToken(bpsize, bpPortion, BP_in_items, tokenBindings, activation_dict, bs_testing, normalize_fact):
 # NOW REMEMBER THE STORED ITEMS
-    #notLink_all = list()  # will be used to accumulate the specific token linkages
     BP_in_all = list()  # will be used to accumulate the bp activations for each item
     notLink_all = tokenBindings[0]
     shape_fw = tokenBindings[1]
@@ -252,12 +381,8 @@ def BPTokens_retrieveByToken(bpsize, bpPortion, BP_in_items,tokenBindings, activ
     location_fw = tokenBindings[3]
     L1_fw = tokenBindings[4]
     L2_fw = tokenBindings[5]
-   
-    tokenBindings.append(shape_fw)
-    tokenBindings.append(color_fw)
-    tokenBindings.append(location_fw)
-    tokenBindings.append(L1_fw)
-    tokenBindings.append(L2_fw)
+    scale_fw = tokenBindings[6]
+    object_fw = tokenBindings[7]
 
     activations = defaultdict(lambda: [torch.zeros([bs_testing,1]).cuda(), 0], activation_dict) # error handling
     
@@ -267,40 +392,51 @@ def BPTokens_retrieveByToken(bpsize, bpPortion, BP_in_items,tokenBindings, activ
     scale_act, scale_coeff = activations['scale']
     l1_act, l1_coeff = activations['l1']
     l2_act, l2_coeff = activations['l2']
+    object_act, object_coeff = activations['object']
     #print(l1_act.size())
 
-    bp_in_shape_dim = shape_act.shape[1]  # neurons in the Bottleneck
+    bp_in_shape_dim = shape_act.shape[1]  # dimensions for each latent space in the binding model
     bp_in_color_dim = color_act.shape[1]
     bp_in_location_dim = location_act.shape[1]
     bp_in_L1_dim = l1_act.shape[1]
     bp_in_L2_dim = l2_act.shape[1]
+    bp_in_scale_dim = scale_act.shape[1]
+    bp_in_object_dim = object_act.shape[1]
 
-    shape_out_all = torch.zeros(bs_testing,
-                                bp_in_shape_dim).cuda()  # will be used to accumulate the reconstructed shapes
-    color_out_all = torch.zeros(bs_testing,
-                                bp_in_color_dim).cuda()  # will be used to accumulate the reconstructed colors
-    location_out_all = torch.zeros(bs_testing,
-                                bp_in_location_dim).cuda()  # will be used to accumulate the reconstructed location
+    # destination vectors for reconstructions
+    shape_out_all = torch.zeros(bs_testing, bp_in_shape_dim).cuda()  # will be used to accumulate the reconstructed shapes
+    color_out_all = torch.zeros(bs_testing, bp_in_color_dim).cuda()  # will be used to accumulate the reconstructed colors
+    location_out_all = torch.zeros(bs_testing, bp_in_location_dim).cuda()  # will be used to accumulate the reconstructed location
     L1_out_all = torch.zeros(bs_testing, bp_in_L1_dim).cuda()
     L2_out_all = torch.zeros(bs_testing, bp_in_L2_dim).cuda()
-    BP_in_items = BP_in_items.repeat(bs_testing, 1)  # repeat the matrix to the number of items to easier retrieve
+    scale_out_all = torch.zeros(bs_testing, bp_in_scale_dim).cuda()
+    object_out_all = torch.zeros(bs_testing, bp_in_object_dim).cuda()
+
+    # Decoding!  Retrieve each item from the binding pool
+    BP_in_items = BP_in_items.repeat(bs_testing, 1)  # repeat the matrix so the number of items to easier retrieve
     for items in range(bs_testing):  # for each item to be retrieved
-        BP_in_items[items, notLink_all[items, :]] = 0  # set the BPs to zero for this token retrieval
+        BP_in_items[items, notLink_all[items, :]] = 0  # set the unconnected BPs to zero for this token retrieval
         L1_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1),L1_fw.t()).cuda()  # do the actual reconstruction
         L1_out_all[items,:] = (L1_out_eachimg / bpPortion) * normalize_fact  # put the reconstructions into a big tensor and then normalize by the effective # of BP nodes
 
         L2_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1),L2_fw.t()).cuda()  # do the actual reconstruction
-        L2_out_all[items, :] = L2_out_eachimg / bpPortion  #
+        L2_out_all[items, :] = L2_out_eachimg / bpPortion
 
         shape_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1), shape_fw.t()).cuda()  # do the actual reconstruction
         color_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1), color_fw.t()).cuda()
         location_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1), location_fw.t()).cuda()
+        scale_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1), scale_fw.t()).cuda()
+        object_out_eachimg = torch.mm(BP_in_items[items, :].view(1, -1), object_fw.t()).cuda()
+
         shape_out_all[items, :] = shape_out_eachimg / bpPortion  # put the reconstructions into a bit tensor and then normalize by the effective # of BP nodes
         color_out_all[items, :] = color_out_eachimg / bpPortion
         location_out_all[items, :] = location_out_eachimg / bpPortion
+        scale_out_all[items, :] = scale_out_eachimg / bpPortion
+        object_out_all[items, :] = object_out_eachimg / bpPortion
 
     return {'shape':shape_out_all, 'color':color_out_all, 
-            'location':location_out_all, 'scale':[], 'l2':L2_out_all, 'l1':L1_out_all}
+            'location':location_out_all, 'scale':scale_out_all, 
+            'l2':L2_out_all, 'l1':L1_out_all, 'object':object_out_all}
 
 # store both tok1,tok2, probe, take whichever token is higher
 
